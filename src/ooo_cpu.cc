@@ -270,11 +270,22 @@ long O3_CPU::fetch_instruction()
     return champsim::block_number{lhs.ip} != champsim::block_number{rhs.ip};
   };
 
+  // Check if in DIB
+  auto was_in_dib = [](const ooo_model_instr& x) {
+    return !x.fetch_completed;
+  };
+
   auto l1i_req_begin = std::find_if(std::begin(IFETCH_BUFFER), std::end(IFETCH_BUFFER), fetch_ready);
   for (champsim::bandwidth to_read{L1I_BANDWIDTH}; to_read.has_remaining() && l1i_req_begin != std::end(IFETCH_BUFFER); to_read.consume()) {
     auto l1i_req_end = std::adjacent_find(l1i_req_begin, std::end(IFETCH_BUFFER), no_match_ip);
     if (l1i_req_end != std::end(IFETCH_BUFFER)) {
       l1i_req_end = std::next(l1i_req_end); // adjacent_find returns the first of the non-equal elements
+    }
+
+    // if all of the instructions to be fetched are in DIB, then don't issue the fetch
+    if (std::find_if(l1i_req_begin, l1i_req_end, was_in_dib) == l1i_req_end) {
+      //fmt::print("skipping fetch because all instrs were in DIB\n");
+      continue;
     }
 
     // Issue to L1I

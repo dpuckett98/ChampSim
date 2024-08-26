@@ -14,6 +14,9 @@
 #include <fmt/ranges.h>
 
 class cpi_stack_retire : public EventListener {
+  long print_cycles = 10000;
+  long curr_cycles = 0;
+
   long computing_cycles = 0;
   long stalled_cycles = 0;
   long stalled_pt_miss_cycles = 0;
@@ -26,6 +29,7 @@ class cpi_stack_retire : public EventListener {
   std::map<std::string, long> stalled_cache_miss_counts;
   std::map<std::string, long> drained_cache_miss_counts;
   std::vector<std::pair<uint64_t, std::string> > cache_misses;
+  std::vector<uint64_t> itlb_cache_misses;
 
   bool in_warmup = false;
   bool has_previous_instruction = false;
@@ -45,9 +49,16 @@ class cpi_stack_retire : public EventListener {
     if (eventType == event::CACHE_TRY_HIT) {
       CACHE_TRY_HIT_data* c_data = static_cast<CACHE_TRY_HIT_data *>(data);
       if (!c_data->hit && c_data->instr_id > last_instr_id) {
-        cache_misses.push_back(std::make_pair(c_data->instr_id, c_data->NAME));
+        /*if (c_data->NAME == "cpu0_ITLB") {
+		fmt::print("ITLB miss at: {}\n", c_data->instr_id);
+	}*/
+	cache_misses.push_back(std::make_pair(c_data->instr_id, c_data->NAME));
+	if (c_data->NAME.find("ITLB") != std::string::npos) {
+          itlb_cache_misses.push_back(c_data->instr_id);
+	}
       }
     } else if (eventType == event::PRE_CYCLE) {
+      curr_cycles++;
       PRE_CYCLE_data* p_data = static_cast<PRE_CYCLE_data *>(data);
       ROB = p_data->ROB;
     } else if (eventType == event::RETIRE) {
@@ -70,12 +81,20 @@ class cpi_stack_retire : public EventListener {
           stalled_cycles++;
 
           std::string name = "";
+	  bool recording = false;
           for (auto cm : cache_misses) {
-            if (cm.first == ROB->front().instr_id) {
-              if (name != "") {
-                name += "-";
-              }
-              name += cm.second;
+            // only include this cache miss if the instructions match and it's not a duplicate
+            if (cm.first == ROB->front().instr_id && name.find(cm.second) == std::string::npos) {
+              // only start recording if it's a dcache miss
+	      if (!recording && (cm.second == "cpu0_DTLB" || cm.second == "cpu0_L1D")) {
+                recording = true;
+	      }
+	      if (recording) {
+                if (name != "") {
+                  name += "-";
+                }
+                name += cm.second;
+	      }
             }
           }
           if (name != "") {
@@ -95,15 +114,22 @@ class cpi_stack_retire : public EventListener {
 	for (auto instr = r_data->begin; instr != r_data->end; instr++) {
           int idx = 0;
           std::vector<int> to_remove = std::vector<int>();
-          for (auto cm : cache_misses) {
-            if (cm.first == instr->instr_id) {
+          bool done_recording = false;
+	  for (auto cm : cache_misses) {
+            // only count if instr_id matches and it's not a duplicate
+            if (cm.first == instr->instr_id && first_name.find(cm.second) == std::string::npos) {
               to_remove.push_back(idx);
-              if (instr->instr_id == r_data->begin->instr_id) {
-                if (first_name != "") {
-                  first_name += "-";
+	      if (!done_recording && (cm.second == "cpu0_DTLB" || cm.second == "cpu0_L1D")) {
+                done_recording = true;
+	      }
+	      if (!done_recording) {
+                if (instr->instr_id == r_data->begin->instr_id) {
+                  if (first_name != "") {
+                    first_name += "-";
+                  }
+                  first_name += cm.second;
                 }
-                first_name += cm.second;
-              }
+	      }
             }
             idx++;
           }
@@ -130,8 +156,10 @@ class cpi_stack_retire : public EventListener {
         previous_instruction_mispredicted_branch = std::prev(r_data->end)->branch_mispredicted; //r_data->instrs[std::distance(r_data->begin, r_data->end)-1].branch_mispredicted;
         last_instr_id = std::prev(r_data->end)->instr_id; //r_data->instrs[std::distance(r_data->begin, r_data->end)-1].instr_id;
       }
-    } else if (eventType == event::END) {
-      fmt::print("CPI Stacks:\n");
+    } else if (curr_cycles == print_cycles or eventType == event::END) {
+      curr_cycles = 0;
+
+      fmt::print("CPI Stacks Retire:\n");
       fmt::print("Computing cycles: {}\n", computing_cycles);
       for (unsigned long i = 0; i < computing_counts.size(); i++) {
         fmt::print("  Retired {}: {}", i + 1, computing_counts[i]);
