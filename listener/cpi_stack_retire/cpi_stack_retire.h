@@ -49,7 +49,7 @@ class cpi_stack_retire : public EventListener {
   void print_set_results() {
     // calculate results for this set
     std::vector<long> cc_diff = std::vector<long>(computing_counts);
-    for (int i = 0; i < last_computing_counts.size(); i++) {
+    for (size_t i = 0; i < last_computing_counts.size(); i++) {
       cc_diff[i] -= last_computing_counts[i];
     }
     std::map<std::string, long> scmc_diff = std::map<std::string, long>(stalled_cache_miss_counts);

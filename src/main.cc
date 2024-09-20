@@ -92,10 +92,6 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
 
   CLI11_PARSE(app, argc, argv);
 
-  for (auto v : listener_names) {
-    fmt::print("{}\n", v);
-  }
-
   // init event listeners
   init_event_listeners(listener_names);
 
