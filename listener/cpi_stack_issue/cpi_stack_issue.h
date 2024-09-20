@@ -24,6 +24,14 @@ class cpi_stack_issue : public EventListener {
   long drained_cycles = 0;
   long drained_streak_cycles = 0; 
 
+  long last_computing_cycles = 0;
+  long last_stalled_cycles = 0;
+  long last_flushed_cycles = 0;
+  long last_drained_cycles = 0;
+  std::vector<long> last_computing_counts;
+  std::map<std::string, long> last_stalled_cache_miss_counts;
+  std::map<std::string, long> last_drained_cache_miss_counts;
+
   uint64_t last_instr_id = 99999;
   std::vector<long> computing_counts;
   std::map<std::string, long> stalled_cache_miss_counts;
@@ -145,6 +153,79 @@ class cpi_stack_issue : public EventListener {
     stalling_instructions.erase(instr_id);
   }
 
+  // this function just prints the results (e.g., cycle counts) from the last print_cycles cycles
+  void print_set_results() {
+    // calculate results for this set
+    std::vector<long> cc_diff = std::vector<long>(computing_counts);
+    for (size_t i = 0; i < last_computing_counts.size(); i++) {
+      cc_diff[i] -= last_computing_counts[i];
+    }
+    std::map<std::string, long> scmc_diff = std::map<std::string, long>(stalled_cache_miss_counts);
+    for (auto const& [name, count] : last_stalled_cache_miss_counts) {
+      scmc_diff[name] -= count;
+    }
+    std::map<std::string, long> dcmc_diff = std::map<std::string, long>(drained_cache_miss_counts);
+    for (auto const& [name, count] : last_drained_cache_miss_counts) {
+      dcmc_diff[name] -= count;
+    }
+
+    // print results
+    print_results(curr_cycles, computing_cycles - last_computing_cycles, stalled_cycles - last_stalled_cycles, flushed_cycles - last_flushed_cycles, drained_cycles - last_drained_cycles, cc_diff, scmc_diff, dcmc_diff);
+
+    // update last counts
+    last_computing_cycles = computing_cycles;
+    last_stalled_cycles = stalled_cycles;
+    last_flushed_cycles = flushed_cycles;
+    last_drained_cycles = drained_cycles;
+    last_computing_counts = std::vector<long>(computing_counts);
+    for (auto const& [name, count] : stalled_cache_miss_counts) {
+      last_stalled_cache_miss_counts[name] = count;
+    }
+    for (auto const& [name, count] : drained_cache_miss_counts) {
+      last_drained_cache_miss_counts[name] = count;
+    }
+  }
+
+  void print_results(long _curr_cycles, long _computing_cycles, long _stalled_cycles, long _flushed_cycles, long _drained_cycles, const std::vector<long>& _computing_counts, const std::map<std::string, long>& _stalled_cache_miss_counts, const std::map<std::string, long>& _drained_cache_miss_counts) {
+    // header
+    fmt::print("\nCPI Stacks Issue @ {}\n", _curr_cycles);
+
+    // computing
+    fmt::print("Computing cycles: {}\n", _computing_cycles);
+    for (unsigned long i = 0; i < _computing_counts.size(); i++) {
+      fmt::print("  Retired {}: {}", i + 1, _computing_counts[i]);
+    }
+
+    // stalled
+    fmt::print("\nStalled cycles: {}\n", _stalled_cycles);
+    // sort and print cache misses
+    std::vector<std::pair<std::string, int> > to_sort;
+    std::copy(_stalled_cache_miss_counts.begin(), _stalled_cache_miss_counts.end(), std::back_inserter(to_sort));
+    std::sort(to_sort.begin(), to_sort.end(), [](auto &left, auto &right) {
+      return left.second > right.second;
+    });
+    for (const auto& [name, count] : to_sort) {
+      fmt::print("  {}: {}", name, count);
+    }
+    fmt::print("\n");
+
+    // flushed
+    fmt::print("Flushed cycles: {}\n", _flushed_cycles);
+
+    // drained
+    fmt::print("Drained cycles: {}\n", _drained_cycles);
+    // sort and print cache misses
+    to_sort = std::vector<std::pair<std::string, int> >();
+    std::copy(_drained_cache_miss_counts.begin(), _drained_cache_miss_counts.end(), std::back_inserter(to_sort));
+    std::sort(to_sort.begin(), to_sort.end(), [](auto &left, auto &right) {
+      return left.second > right.second;
+    });
+    for (const auto& [name, count] : to_sort) {
+      fmt::print("  {}: {}", name, count);
+    }
+    fmt::print("\n");
+  }
+
   void process_event(event eventType, void* data) {
     if (eventType == event::BEGIN_PHASE) {
       BEGIN_PHASE_data* b_data = static_cast<BEGIN_PHASE_data *>(data);
@@ -167,6 +248,12 @@ class cpi_stack_issue : public EventListener {
       DISPATCH_BUFFER = p_data->DISPATCH_BUFFER;
       IFETCH_BUFFER = p_data->IFETCH_BUFFER;
       input_queue = p_data->input_queue;
+
+      // print results
+      if (curr_cycles % print_cycles == 0) {
+        print_set_results();
+	//print_results(curr_cycles, computing_cycles, stalled_cycles, flushed_cycles, drained_cycles, computing_counts, stalled_cache_miss_counts, drained_cache_miss_counts);
+      }
     } else if (eventType == event::BRANCH) {
       BRANCH_data* b_data = static_cast<BRANCH_data *>(data);
       if (b_data->instr->branch_mispredicted) {
@@ -321,9 +408,12 @@ class cpi_stack_issue : public EventListener {
         //previous_instruction_mispredicted_branch = std::prev(r_data->end)->branch_mispredicted;
         last_instr_id = std::prev(r_data->end)->instr_id;
       }
-    } else if (curr_cycles == print_cycles or eventType == event::END) {
-      curr_cycles = 0;
+    } else if (eventType == event::END) {
+      //curr_cycles = 0;
 
+      print_results(curr_cycles, computing_cycles, stalled_cycles, flushed_cycles, drained_cycles, computing_counts, stalled_cache_miss_counts, drained_cache_miss_counts);
+
+      /*
       fmt::print("CPI Stacks Issue:\n");
       fmt::print("Computing cycles: {}\n", computing_cycles);
       for (unsigned long i = 0; i < computing_counts.size(); i++) {
@@ -351,7 +441,7 @@ class cpi_stack_issue : public EventListener {
       for (const auto& [name, count] : to_sort) {
         fmt::print("  {}: {}", name, count);
       }
-      fmt::print("\n\nUnaccounted cache misses: {}\n\n", cache_misses.size());
+      fmt::print("\n\nUnaccounted cache misses: {}\n\n", cache_misses.size()); */
       // TODO: reset data
     }
   }
