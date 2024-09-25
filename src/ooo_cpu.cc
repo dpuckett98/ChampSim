@@ -197,12 +197,9 @@ bool O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
       stop_fetch = arch_instr.branch_taken; // if correctly predicted taken, then we can't fetch anymore instructions this cycle
     }
 
-    // call event listeners
-    BRANCH_data b_data = BRANCH_data(cpu, &arch_instr);
-    call_event_listeners(event::BRANCH, (void*) &b_data);
-
     impl_update_btb(arch_instr.ip, arch_instr.branch_target, arch_instr.branch_taken, arch_instr.branch);
     impl_last_branch_result(arch_instr.ip, arch_instr.branch_target, arch_instr.branch_taken, arch_instr.branch);
+    
     // call event listeners
     BRANCH_data b_data = BRANCH_data(cpu, &arch_instr);
     call_event_listeners(event::BRANCH, (void*) &b_data);
