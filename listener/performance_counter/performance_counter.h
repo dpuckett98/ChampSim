@@ -34,6 +34,9 @@ class performance_counter : public EventListener {
     long num_cycles = 0;
     long num_branches = 0;
     
+    long total_num_dependencies = 0;
+    long num_instrs_scheduled = 0;
+
     public:
      void process_event(event eventType, void* data) {
         if (eventType == event::BEGIN_PHASE) {
@@ -44,13 +47,20 @@ class performance_counter : public EventListener {
         if (in_warmup) {
             return;
         }
-        if (eventType == event::PRE_CYCLE) {
+        if (eventType == event::END_SCHEDULE) {
+          END_SCHEDULE_data* e_data = static_cast<END_SCHEDULE_data *>(data);
+          num_instrs_scheduled += std::distance(e_data->begin, e_data->end);
+	  for (auto iter = e_data->begin; iter < e_data->end; iter++) {
+            total_num_dependencies += (*iter)->num_reg_dependent;
+	  }
+	} else if (eventType == event::PRE_CYCLE) {
             cycles++;
             num_cycles++;
             if (cycles >= print_cycles) {
                 cycles = 0;
                 fmt::print("Performance Check\n");
                 fmt::print("Lifetime Cycles: {}\n", num_cycles);
+		fmt::print("# scheduled instrs: {}, total # dependencies: {}, avg # dependencies: {}\n", num_instrs_scheduled, total_num_dependencies, (double)total_num_dependencies / (double)num_instrs_scheduled);
                 fmt::print("Overall Cache Stats:\n");
                 for (const auto& [cache, count] : cache_access) {
                     auto miss_it = cache_misses.find(cache);

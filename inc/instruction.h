@@ -154,12 +154,14 @@ private:
       is_branch = true;
       branch_taken = true;
       branch = BRANCH_DIRECT_JUMP;
-    } else if (!reads_sp && !reads_ip && !reads_flags && writes_ip && reads_other) {
+    } else if (!reads_sp && !reads_ip && !reads_flags && writes_ip && reads_other) { // for CVP traces
+    //} else if (!reads_sp && !reads_ip && !reads_flags && writes_ip && reads_other) { // for normal traces
       // indirect branch
       is_branch = true;
       branch_taken = true;
       branch = BRANCH_INDIRECT;
-    } else if (!reads_sp && reads_ip && !writes_sp && writes_ip && (reads_flags || reads_other)) {
+    //} else if (!reads_sp && reads_ip && !writes_sp && writes_ip && reads_flags && !reads_other) { // for CVP traces
+    } else if (!reads_sp && reads_ip && !writes_sp && writes_ip && (reads_flags || reads_other)) { // for normal traces
       // conditional branch
       is_branch = true;
       branch_taken = instr.branch_taken; // don't change this

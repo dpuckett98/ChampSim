@@ -35,6 +35,15 @@ ptw_deprecation_keys = {
     'ptw_rq_size': 'rq_size'
 }
 
+pmem_deprecation_keys = {
+    'columns': 'bank_columns',
+    'rows': 'bank_rows'
+}
+
+pmem_deprecation_warnings = {
+    'columns': 'Set "bank_columns" to "columns" * 8'
+}
+
 def executable_name(*config_list):
     ''' Produce the executable name from a list of configurations '''
     name_parts = filter(None, ('champsim', *(c.get('name') for c in config_list)))
@@ -80,7 +89,7 @@ def module_parse(mod, context):
     '''
 
     if isinstance(mod, dict):
-        return util.chain(util.subdict(mod, ('class',)), context.find(mod['path']))
+        return util.chain(util.subdict(mod, ('class','legacy')), context.find(mod['path']))
     return context.find(mod)
 
 def split_string_or_list(val, delim=','):
@@ -156,7 +165,7 @@ def default_frequencies(cores, caches):
 
     yield from util.collect(paths, operator.itemgetter('name'), functools.partial(functools.reduce, max_joiner))
 
-def do_deprecation(element, deprecation_map):
+def do_deprecation(element, deprecation_map, warning_msg_map={}):
     '''
     Print a warning and return a replacement dictionary for keys that are deprecated.
     Currently only supports simple renamed keys
@@ -168,7 +177,7 @@ def do_deprecation(element, deprecation_map):
     retval = { 'name': element['name'] }
     for old, new in deprecation_map.items():
         if old in element:
-            print(f'WARNING: key "{old}" in element {element["name"]} is deprecated. Use "{new}" instead.')
+            print(f'WARNING: key "{old}" in element {element["name"]} is deprecated. Use "{new}" instead. {warning_msg_map.get(old, "")}')
             retval = { new: element[old], **retval }
     return retval
 
@@ -267,6 +276,13 @@ class NormalizedConfiguration:
         self.caches = {k:v for k,v in self.caches.items() if k != 'DRAM'}
 
         self.pmem = config_file.get('physical_memory', {})
+        
+        #this allows frequency to be specified instead of data rate or vice-versa for DRAM
+        if('frequency' in self.pmem.keys()):
+            self.pmem['data_rate'] = self.pmem['frequency']
+            self.pmem['frequency'] = self.pmem['frequency']/2
+        elif('data_rate' in self.pmem.keys()):
+            self.pmem['frequency'] = self.pmem['data_rate']/2
 
         if verbose:
             print('P: pmem', list(self.pmem.keys()))
@@ -313,10 +329,12 @@ class NormalizedConfiguration:
         )
 
         pmem = util.chain(self.pmem, {
-            'name': 'DRAM', 'frequency': 3200, 'channels': 1, 'ranks': 1, 'banks': 8, 'rows': 65536, 'columns': 128,
-            'lines_per_column': 8, 'channel_width': 8, 'wq_size': 64, 'rq_size': 64, 'tRP': 12.5, 'tRCD': 12.5, 'tCAS': 12.5,
-            'turn_around_time': 7.5
+            'name': 'DRAM', 'data_rate': 3200, 'frequency': 1600, 'channels': 1, 'ranks': 1, 'bankgroups': 4, 'banks': 8, 'bank_rows': 65536, 'bank_columns': 1024,
+            'channel_width': 8, 'wq_size': 64, 'rq_size': 64, 'tRP': 18, 'tRCD': 18, 'tCAS': 18, 'tRAS' : 38,
+            'refresh_period': 64, 'refreshes_per_period': 8192
         })
+        pmem = util.chain(pmem,(do_deprecation(pmem, pmem_deprecation_keys,pmem_deprecation_warnings)))
+        
         vmem = util.chain(
             transform_for_keys(self.vmem, ('pte_page_size',), int_or_prefixed_size),
             self.vmem,
@@ -424,11 +442,10 @@ class NormalizedConfiguration:
             'listeners': listeners
         }
         module_info = {
-            'repl': {k:modules.get_repl_data(v) for k,v in util.combine_named(*(c['_replacement_data'] for c in caches.values()), replacement_context.find_all()).items()},
-            'pref': {k:modules.get_pref_data(v) for k,v in util.combine_named(*(c['_prefetcher_data'] for c in caches.values()), prefetcher_context.find_all()).items()},
-            'branch': {k:modules.get_branch_data(v) for k,v in util.combine_named(*(c['_branch_predictor_data'] for c in cores), branch_context.find_all()).items()},
-            'btb': {k:modules.get_btb_data(v) for k,v in util.combine_named(*(c['_btb_data'] for c in cores), btb_context.find_all()).items()},
-            'listener': {k:modules.get_listener_data(v) for k,v in util.combine_named(listener_context.find_all()).items()}
+            'repl': util.combine_named(*(c['_replacement_data'] for c in caches.values()), replacement_context.find_all()),
+            'pref': util.combine_named(*(c['_prefetcher_data'] for c in caches.values()), prefetcher_context.find_all()),
+            'branch': util.combine_named(*(c['_branch_predictor_data'] for c in cores), branch_context.find_all()),
+            'btb': util.combine_named(*(c['_btb_data'] for c in cores), btb_context.find_all())
         }
 
         config_extern = {
@@ -438,7 +455,7 @@ class NormalizedConfiguration:
 
         return elements, module_info, config_extern
 
-def parse_config(*configs, module_dir=None, branch_dir=None, btb_dir=None, pref_dir=None, repl_dir=None, compile_all_modules=False, verbose=False): # pylint: disable=line-too-long,
+def parse_config(*configs, module_dir=None, branch_dir=None, btb_dir=None, pref_dir=None, repl_dir=None, listener_dir=None, compile_all_modules=False, verbose=False): # pylint: disable=line-too-long,
     '''
     This is the main parsing dispatch function. Programmatic use of the configuration system should use this as an entry point.
 
@@ -463,14 +480,17 @@ def parse_config(*configs, module_dir=None, branch_dir=None, btb_dir=None, pref_
         return lhs
     merged_config = functools.reduce(do_merge, (NormalizedConfiguration(c, verbose=verbose) for c in configs))
 
-    elements, module_info, config_file = merged_config.apply_defaults_in(
+    contexts = dict(
         branch_context = modules.ModuleSearchContext(list_dirs('branch', branch_dir or []), verbose=verbose),
         btb_context = modules.ModuleSearchContext(list_dirs('btb', btb_dir or []), verbose=verbose),
         replacement_context = modules.ModuleSearchContext(list_dirs('replacement', repl_dir or []), verbose=verbose),
         prefetcher_context = modules.ModuleSearchContext(list_dirs('prefetcher', pref_dir or []), verbose=verbose),
-        listener_context = modules.ModuleSearchContext(list_dirs('listener', []), verbose=verbose),
-        verbose=verbose
+        listener_context = modules.ModuleSearchContext(list_dirs('listener', listener_dir or []), verbose=verbose),
     )
+    if verbose:
+        for k,v in contexts.items():
+            print(k, v.paths)
+    elements, module_info, config_file = merged_config.apply_defaults_in(**contexts, verbose=verbose)
 
     if compile_all_modules:
         modules_to_compile = [*set(itertools.chain(*(d.keys() for d in module_info.values())))]

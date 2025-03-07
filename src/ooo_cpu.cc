@@ -40,7 +40,7 @@ long O3_CPU::operate()
   long progress{0};
 
   // event listener
-  PRE_CYCLE_data p_data = PRE_CYCLE_data(cpu, &IFETCH_BUFFER, &DISPATCH_BUFFER, &DECODE_BUFFER, &ROB, &LQ, &SQ, &input_queue, current_time.time_since_epoch() / clock_period);
+  PRE_CYCLE_data p_data = PRE_CYCLE_data(cpu, this, &IFETCH_BUFFER, &DISPATCH_BUFFER, &DECODE_BUFFER, &ROB, &LQ, &SQ, &input_queue, current_time.time_since_epoch() / clock_period);
   call_event_listeners(event::PRE_CYCLE, (void*) &p_data);
 
   progress += retire_rob();                    // retire
@@ -176,7 +176,7 @@ bool O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
 
   if (arch_instr.is_branch) {
     if constexpr (champsim::debug_print) {
-      fmt::print("[BRANCH] instr_id: {} ip: {:#x} taken: {}\n", arch_instr.instr_id, arch_instr.ip, arch_instr.branch_taken);
+      fmt::print("[BRANCH] instr_id: {} ip: {} taken: {}\n", arch_instr.instr_id, arch_instr.ip, arch_instr.branch_taken);
     }
 
     // call code prefetcher every time the branch predictor is used
@@ -250,7 +250,7 @@ void O3_CPU::do_check_dib(ooo_model_instr& instr)
   }
 
   instr.dib_checked = true;
-  
+ 
   if constexpr (champsim::debug_print) {
     long cycle = current_time.time_since_epoch() / clock_period;
     fmt::print("[DIB] {} instr_id: {} ip: {:#x} hit: {} cycle: {}\n", __func__, instr.instr_id, instr.ip, instr.fetch_completed,
@@ -264,7 +264,7 @@ long O3_CPU::fetch_instruction()
 
   // Fetch a single cache line
   auto fetch_ready = [](const ooo_model_instr& x) {
-    return x.dib_checked && !x.fetch_issued;
+    return x.dib_checked && !x.fetch_issued; // && !x.fetch_completed;
   };
 
   // Find the chunk of instructions in the block
@@ -274,7 +274,7 @@ long O3_CPU::fetch_instruction()
 
   // Check if in DIB
   auto was_in_dib = [](const ooo_model_instr& x) {
-    return !x.fetch_completed;
+    return x.fetch_completed && x.decoded;
   };
 
   auto l1i_req_begin = std::find_if(std::begin(IFETCH_BUFFER), std::end(IFETCH_BUFFER), fetch_ready);
@@ -285,10 +285,10 @@ long O3_CPU::fetch_instruction()
     }
 
     // if all of the instructions to be fetched are in DIB, then don't issue the fetch
-    if (std::find_if(l1i_req_begin, l1i_req_end, was_in_dib) == l1i_req_end) {
-      //fmt::print("skipping fetch because all instrs were in DIB\n");
-      continue;
-    }
+    //if (std::find_if(l1i_req_begin, l1i_req_end, was_in_dib) == l1i_req_end) {
+    //  fmt::print("skipping fetch because all instrs were in DIB\n");
+    //  continue;
+    //}
 
     // Issue to L1I
     auto success = do_fetch_instruction(l1i_req_begin, l1i_req_end);
@@ -313,12 +313,12 @@ bool O3_CPU::do_fetch_instruction(std::deque<ooo_model_instr>::iterator begin, s
   std::transform(begin, end, std::back_inserter(fetch_packet.instr_depend_on_me), [](const auto& instr) { return instr.instr_id; });
 
   bool success = L1I_bus.issue_read(fetch_packet);
-
+  
   if constexpr (champsim::debug_print) {
-    long cycle = current_time.time_since_epoch() / clock_period;
-    fmt::print("[IFETCH] {} instr_id: {} ip: {:#x} dependents: {} event_cycle: {}\n", __func__, begin->instr_id, begin->ip,
-               std::size(fetch_packet.instr_depend_on_me), cycle);
+    fmt::print("[IFETCH] {} instr_id: {} ip: {} dependents: {} event_cycle: {}\n", __func__, begin->instr_id, begin->ip,
+               std::size(fetch_packet.instr_depend_on_me), begin->ready_time.time_since_epoch() / clock_period);
   }
+
   // call event listeners
   START_FETCH_data s_data = START_FETCH_data(cpu, begin, end, success, current_time.time_since_epoch() / clock_period);
   call_event_listeners(event::START_FETCH, (void*) &s_data);
@@ -329,36 +329,90 @@ bool O3_CPU::do_fetch_instruction(std::deque<ooo_model_instr>::iterator begin, s
 
 long O3_CPU::promote_to_decode()
 {
-  champsim::bandwidth available_fetch_bandwidth{
-      std::min(FETCH_WIDTH, champsim::bandwidth::maximum_type{static_cast<long>(DECODE_BUFFER_SIZE - std::size(DECODE_BUFFER))})};
-  auto [window_begin, window_end] = champsim::get_span_p(std::begin(IFETCH_BUFFER), std::end(IFETCH_BUFFER), available_fetch_bandwidth,
-                                                         [time = current_time](const auto& x) { return x.fetch_completed && x.ready_time <= time; });
-  long progress{std::distance(window_begin, window_end)};
+  auto is_decoded = [](const ooo_model_instr& x) {
+    return x.decoded;
+  };
 
-  std::for_each(window_begin, window_end, [time = current_time, lat = DECODE_LATENCY, warmup = warmup](auto& x) {
-    return x.ready_time = time + ((warmup || x.decoded) ? champsim::chrono::clock::duration{} : lat);
-  });
+  auto fetch_complete_and_ready = [time = current_time](const auto& x) {
+    return x.fetch_completed && x.ready_time <= time;
+  };
+
+  champsim::bandwidth available_fetch_bandwidth{
+      std::min(FETCH_WIDTH, std::min(champsim::bandwidth::maximum_type{static_cast<long>(DIB_HIT_BUFFER_SIZE - std::size(DIB_HIT_BUFFER))},
+                                     champsim::bandwidth::maximum_type{static_cast<long>(DECODE_BUFFER_SIZE - std::size(DECODE_BUFFER))}))};
+
+  auto fetched_check_end = std::find_if(std::begin(IFETCH_BUFFER), std::end(IFETCH_BUFFER), [](const ooo_model_instr& x) { return !x.fetch_completed; });
+  // find the first not fetch completed
+  auto [window_begin, window_end] = champsim::get_span_p(std::begin(IFETCH_BUFFER), fetched_check_end, available_fetch_bandwidth, fetch_complete_and_ready);
+  auto decoded_window_end = std::stable_partition(window_begin, window_end, is_decoded); // reorder instructions
+  auto mark_for_decode = [this, time = current_time, lat = DECODE_LATENCY, warmup = warmup](auto& x) {
+    return x.ready_time = time + (warmup ? champsim::chrono::clock::duration{} : lat);
+  };
+  // to DIB_HIT_BUFFER
+  auto mark_for_dib = [this, time = current_time, lat = DIB_HIT_LATENCY, warmup = warmup](auto& x) {
+    return x.ready_time = time + lat;
+  };
+
+  std::for_each(window_begin, decoded_window_end, mark_for_dib); // assume DECODE_LATENCY = DIB_HIT_LATENCY
+  std::move(window_begin, decoded_window_end, std::back_inserter(DIB_HIT_BUFFER));
+  // to DECODE_BUFFER
+
+  std::for_each(decoded_window_end, window_end, mark_for_decode);
+  std::move(decoded_window_end, window_end, std::back_inserter(DECODE_BUFFER));
+
+  long progress{std::distance(window_begin, window_end)};
 
   // call event listeners
   START_DECODE_data s_data = START_DECODE_data(cpu, window_begin, window_end, current_time.time_since_epoch() / clock_period);
   call_event_listeners(event::START_DECODE, (void*) &s_data);
 
-  std::move(window_begin, window_end, std::back_inserter(DECODE_BUFFER));
   IFETCH_BUFFER.erase(window_begin, window_end);
-
   return progress;
 }
-
 long O3_CPU::decode_instruction()
 {
-  champsim::bandwidth available_decode_bandwidth{
-      std::min(DECODE_WIDTH, champsim::bandwidth::maximum_type{static_cast<long>(DISPATCH_BUFFER_SIZE - std::size(DISPATCH_BUFFER))})};
-  auto [window_begin, window_end] = champsim::get_span_p(std::begin(DECODE_BUFFER), std::end(DECODE_BUFFER), available_decode_bandwidth,
-                                                         [time = current_time](const auto& x) { return x.ready_time <= time; });
-  long progress{std::distance(window_begin, window_end)};
+  auto is_ready = [time = current_time](const auto& x) {
+    return x.ready_time <= time;
+  };
 
-  // Send decoded instructions to dispatch
-  std::for_each(window_begin, window_end, [&, this](auto& db_entry) {
+  auto dib_hit_buffer_begin = std::begin(DIB_HIT_BUFFER);
+  auto dib_hit_buffer_end = dib_hit_buffer_begin;
+  auto decode_buffer_begin = std::begin(DECODE_BUFFER);
+  auto decode_buffer_end = decode_buffer_begin;
+
+  champsim::bandwidth available_decode_bandwidth{DECODE_WIDTH};
+
+  // bw move instructions to dispatch_buffer
+  champsim::bandwidth available_dib_inorder_bandwidth{
+      std::min(DIB_INORDER_WIDTH, champsim::bandwidth::maximum_type{static_cast<long>(DISPATCH_BUFFER_SIZE - std::size(DISPATCH_BUFFER))})};
+
+  // conditions choose how many instructions sent to dispatch_buffer
+  while (dib_hit_buffer_end != std::end(DIB_HIT_BUFFER) && decode_buffer_end != std::end(DECODE_BUFFER) && available_dib_inorder_bandwidth.has_remaining()
+         && available_decode_bandwidth.has_remaining() && is_ready(std::min(*dib_hit_buffer_end, *decode_buffer_end, ooo_model_instr::program_order))) {
+    if (ooo_model_instr::program_order(*dib_hit_buffer_end, *decode_buffer_end)) {
+      dib_hit_buffer_end++;
+      available_dib_inorder_bandwidth.consume();
+    } else {
+      decode_buffer_end++;
+      available_dib_inorder_bandwidth.consume();
+      available_decode_bandwidth.consume();
+    }
+  }
+  while (dib_hit_buffer_end != std::end(DIB_HIT_BUFFER) && available_dib_inorder_bandwidth.has_remaining() && is_ready(*dib_hit_buffer_end)
+         && (decode_buffer_end == std::end(DECODE_BUFFER) || ooo_model_instr::program_order(*dib_hit_buffer_end, *decode_buffer_end))) {
+    dib_hit_buffer_end++;
+    available_dib_inorder_bandwidth.consume();
+  }
+  while (decode_buffer_end != std::end(DECODE_BUFFER) && available_dib_inorder_bandwidth.has_remaining() && available_decode_bandwidth.has_remaining()
+         && is_ready(*decode_buffer_end)
+         && (dib_hit_buffer_end == std::end(DIB_HIT_BUFFER) || ooo_model_instr::program_order(*decode_buffer_end, *dib_hit_buffer_end))) {
+    decode_buffer_end++;
+    available_dib_inorder_bandwidth.consume();
+    available_decode_bandwidth.consume();
+  }
+
+  // decode instructions have not decoded, merge instructions with dib_hit_buffer then send to dispatch_buffer
+  auto do_decode = [&, this](auto& db_entry) {
     this->do_dib_update(db_entry);
 
     // Resume fetch
@@ -372,23 +426,33 @@ long O3_CPU::decode_instruction()
         this->fetch_resume_time = this->current_time + BRANCH_MISPREDICT_PENALTY;
       }
     }
-
     // Add to dispatch
     db_entry.ready_time = this->current_time + (this->warmup ? champsim::chrono::clock::duration{} : this->DISPATCH_LATENCY);
 
     if constexpr (champsim::debug_print) {
       long cycle = current_time.time_since_epoch() / clock_period;
-      fmt::print("[DECODE] do_decode instr_id: {} cycle: {}\n", db_entry.instr_id, cycle);
+      fmt::print("[DECODE] do_decode instr_id: {} time: {}\n", db_entry.instr_id, this->current_time.time_since_epoch() / this->clock_period);
     }
+  };
 
-  });
+  auto do_dib_hit = [&, this](auto& dib_entry) {
+    dib_entry.ready_time = this->current_time + (this->warmup ? champsim::chrono::clock::duration{} : this->DISPATCH_LATENCY);
+  };
+
+  std::for_each(decode_buffer_begin, decode_buffer_end, do_decode);
+  std::for_each(dib_hit_buffer_begin, dib_hit_buffer_end, do_dib_hit);
+
+  long progress{std::distance(dib_hit_buffer_begin, dib_hit_buffer_end) + std::distance(decode_buffer_begin, decode_buffer_end)};
+
+  size_t init_size = DISPATCH_BUFFER.size();
+  std::merge(dib_hit_buffer_begin, dib_hit_buffer_end, decode_buffer_begin, decode_buffer_end, std::back_inserter(DISPATCH_BUFFER),
+             ooo_model_instr::program_order);
+  DECODE_BUFFER.erase(decode_buffer_begin, decode_buffer_end);
+  DIB_HIT_BUFFER.erase(dib_hit_buffer_begin, dib_hit_buffer_end);
 
   // call event listeners
-  START_DISPATCH_data s_data = START_DISPATCH_data(cpu, window_begin, window_end, current_time.time_since_epoch() / clock_period);
+  START_DISPATCH_data s_data = START_DISPATCH_data(cpu, std::begin(DISPATCH_BUFFER) + init_size, std::end(DISPATCH_BUFFER), current_time.time_since_epoch() / clock_period);
   call_event_listeners(event::START_DISPATCH, (void*) &s_data);
-
-  std::move(window_begin, window_end, std::back_inserter(DISPATCH_BUFFER));
-  DECODE_BUFFER.erase(window_begin, window_end);
 
   return progress;
 }
@@ -414,7 +478,8 @@ long O3_CPU::dispatch_instruction()
 
     available_dispatch_bandwidth.consume();
     ROB.back().ready_time = current_time + (warmup ? champsim::chrono::clock::duration{} : SCHEDULING_LATENCY);
-    
+   
+
     num_entering_scheduler++;
   }
 
@@ -452,6 +517,7 @@ long O3_CPU::schedule_instruction()
 
 void O3_CPU::do_scheduling(ooo_model_instr& instr)
 {
+	
   // Mark register dependencies
   for (auto src_reg : instr.source_registers) {
     if (!std::empty(reg_producers.at(src_reg))) {
@@ -483,7 +549,9 @@ long O3_CPU::execute_instruction()
       do_execution(*rob_it);
       exec_bw.consume();
       executed_instrs.push_back(&(*rob_it));
-    }
+    } /*else if (rob_it == std::begin(ROB)) {
+      fmt::print("ROB Head scheduled: {}, executed: {}, num dependent regs: {}, time okay: {}, ready_time - curr_time: {}\n", rob_it->scheduled, rob_it->executed, rob_it->num_reg_dependent, rob_it->ready_time <= current_time, (rob_it->ready_time - current_time) / clock_period);
+    }*/
   }
 
   // call event listeners
@@ -495,6 +563,7 @@ long O3_CPU::execute_instruction()
 
 void O3_CPU::do_execution(ooo_model_instr& instr)
 {
+
   instr.executed = true;
   instr.ready_time = current_time + (warmup ? champsim::chrono::clock::duration{} : EXEC_LATENCY);
   
@@ -770,6 +839,7 @@ long O3_CPU::retire_rob()
       fmt::print("[ROB] retire_rob instr_id: {} is retired cycle: {}\n", x.instr_id, cycle);
     });
   }
+  
   // call event listeners
   RETIRE_data r_data = RETIRE_data(cpu, retire_begin, retire_end, current_time.time_since_epoch() / clock_period);
   call_event_listeners(event::RETIRE, (void*) &r_data);

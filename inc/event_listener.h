@@ -82,6 +82,7 @@ struct BEGIN_PHASE_data {
 
 struct PRE_CYCLE_data {
   uint32_t cpu;
+  const O3_CPU* o3_cpu;
   std::deque<ooo_model_instr>* IFETCH_BUFFER;
   std::deque<ooo_model_instr>* DISPATCH_BUFFER;
   std::deque<ooo_model_instr>* DECODE_BUFFER;
@@ -91,7 +92,7 @@ struct PRE_CYCLE_data {
   std::deque<ooo_model_instr>* input_queue;
   long cycle;
 
-  PRE_CYCLE_data(uint32_t cpu_, std::deque<ooo_model_instr>* if_buf, std::deque<ooo_model_instr>* dis_buf, std::deque<ooo_model_instr>* dec_buf, std::deque<ooo_model_instr>* rob_, std::vector<std::optional<LSQ_ENTRY>>* lq_, std::deque<LSQ_ENTRY>* sq_, std::deque<ooo_model_instr>* iq, long cycle_) : cpu(cpu_), IFETCH_BUFFER(if_buf), DISPATCH_BUFFER(dis_buf), DECODE_BUFFER(dec_buf), ROB(rob_), LQ(lq_), SQ(sq_), input_queue(iq), cycle(cycle_) {}
+  PRE_CYCLE_data(uint32_t cpu_, const O3_CPU* o3_cpu_, std::deque<ooo_model_instr>* if_buf, std::deque<ooo_model_instr>* dis_buf, std::deque<ooo_model_instr>* dec_buf, std::deque<ooo_model_instr>* rob_, std::vector<std::optional<LSQ_ENTRY>>* lq_, std::deque<LSQ_ENTRY>* sq_, std::deque<ooo_model_instr>* iq, long cycle_) : cpu(cpu_), o3_cpu(o3_cpu_), IFETCH_BUFFER(if_buf), DISPATCH_BUFFER(dis_buf), DECODE_BUFFER(dec_buf), ROB(rob_), LQ(lq_), SQ(sq_), input_queue(iq), cycle(cycle_) {}
 };
 
 struct INITIALIZE_data {

@@ -139,7 +139,7 @@ class cpi_stack_retire : public EventListener {
 
       // print results
       if (curr_cycles % print_cycles == 0) {
-        print_set_results();
+        //print_set_results();
 	//print_results(curr_cycles, computing_cycles, stalled_cycles, flushed_cycles, drained_cycles, computing_counts, stalled_cache_miss_counts, drained_cache_miss_counts);
       }
     } else if (eventType == event::RETIRE) {
@@ -223,7 +223,9 @@ class cpi_stack_retire : public EventListener {
             } else {
               drained_cache_miss_counts[name] = drained_streak_cycles;
             }
-          }
+          } else {
+            fmt::print("Drained but not from cache miss; instr: {}, drained_streak_cycles: {}\n", r_data->begin->instr_id, drained_streak_cycles);
+	  }
           drained_streak_cycles = 0;
         }
 

@@ -32,6 +32,10 @@ class cpi_stack_issue : public EventListener {
   std::map<std::string, long> last_stalled_cache_miss_counts;
   std::map<std::string, long> last_drained_cache_miss_counts;
 
+  long rob_full = 0;
+  long first = 0;
+  long second = 0;
+
   uint64_t last_instr_id = 99999;
   std::vector<long> computing_counts;
   std::map<std::string, long> stalled_cache_miss_counts;
@@ -50,6 +54,9 @@ class cpi_stack_issue : public EventListener {
   std::deque<ooo_model_instr>* DECODE_BUFFER;
   std::deque<ooo_model_instr>* ROB;
   std::deque<ooo_model_instr>* input_queue;
+
+  std::size_t ROB_SZ;
+  const O3_CPU* o3_cpu;
 
   void mark_drained_cache_misses(uint64_t instr_id, long count) {
     std::string name = "";
@@ -189,11 +196,12 @@ class cpi_stack_issue : public EventListener {
   void print_results(long _curr_cycles, long _computing_cycles, long _stalled_cycles, long _flushed_cycles, long _drained_cycles, const std::vector<long>& _computing_counts, const std::map<std::string, long>& _stalled_cache_miss_counts, const std::map<std::string, long>& _drained_cache_miss_counts) {
     // header
     fmt::print("\nCPI Stacks Issue @ {}\n", _curr_cycles);
-
+    //fmt::print("Cycles rob full: {}\n", rob_full);
+    //fmt::print("First: {}, second: {}\n", first, second);
     // computing
     fmt::print("Computing cycles: {}\n", _computing_cycles);
     for (unsigned long i = 0; i < _computing_counts.size(); i++) {
-      fmt::print("  Retired {}: {}", i + 1, _computing_counts[i]);
+      fmt::print("  Issued {}: {}", i + 1, _computing_counts[i]);
     }
 
     // stalled
@@ -248,7 +256,8 @@ class cpi_stack_issue : public EventListener {
       DISPATCH_BUFFER = p_data->DISPATCH_BUFFER;
       IFETCH_BUFFER = p_data->IFETCH_BUFFER;
       input_queue = p_data->input_queue;
-
+      ROB_SZ = p_data->o3_cpu->ROB_SIZE;
+      o3_cpu = p_data->o3_cpu;
       // print results
       if (curr_cycles % print_cycles == 0) {
         print_set_results();
@@ -271,13 +280,37 @@ class cpi_stack_issue : public EventListener {
       if (std::distance(i_data->begin, i_data->end) == 0) {
 	// if ROB is empty or only has executed instructions, then it's a frontend fault; e.g., if there's at least one instruction waiting on dependencies, we blame the backend (similar to MSCS; different from TopDown)
 	auto is_not_executed = [](const ooo_model_instr& x) {
-          return !x.executed;
+          return x.scheduled && !x.executed;
 	};
-	auto first_waiting_instr = std::find_if(ROB->begin(), ROB->end(), is_not_executed);
+	auto is_waiting = [this](const ooo_model_instr& x) {
+          return x.scheduled && !x.executed && x.num_reg_dependent > 0 && x.ready_time <= o3_cpu->current_time;
+	};
+	auto first_waiting_instr = std::find_if(ROB->begin(), ROB->end(), is_waiting);
 	// if no instrs issued, ROB is empty, and previous instruction was a mispredicted branch, then it's flushed
 	//if (ROB->empty() && previous_instruction_mispredicted_branch) {
         //  flushed_cycles++;
-        if (ROB->empty() || first_waiting_instr == ROB->end()) {
+        if (ROB->size() >= ROB_SZ) {
+          rob_full++;
+	}
+
+	if (ROB->size() < ROB_SZ && (ROB->empty() || first_waiting_instr == ROB->end())) {
+          first++;
+	}
+	if (ROB->empty() || first_waiting_instr == ROB->end()) {
+          second++;
+	}
+
+        bool first_condition = ROB->empty() || first_waiting_instr == ROB->end();
+	if (ROB->size() < ROB_SZ && first_condition) {
+	//if (first_condition) {
+	  if (!(first_condition)) {
+		  fmt::print("Diff!\n");
+	  }
+		//if (ROB->size() < ROB_SZ && (ROB->empty() || first_waiting_instr == ROB->end())) {
+	/*if (ROB->size() > ROB_SZ) {
+          fmt::print("ROB->size() {} > ROB_SZ {}\n", ROB->size(), ROB_SZ);
+	}*/
+	//if (ROB->empty() || first_waiting_instr == ROB->end()) {
 	  // get first instr in FE
           ooo_model_instr* instr = nullptr;
 	  bool valid = false;
