@@ -291,21 +291,23 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   }
 
   // update replacement policy
-  const auto way_idx = std::distance(set_begin, way);
-  impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, module_address(handle_pkt), handle_pkt.ip, {}, handle_pkt.type,
-                                hit);
+  if (!always_hits) {
+    const auto way_idx = std::distance(set_begin, way);
+    impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, module_address(handle_pkt), handle_pkt.ip, {}, handle_pkt.type,
+                                  hit);
+  }
 
   if (hit) {
     sim_stats.hits.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
 
-    if (!always_hits) {
+    /*if (!always_hits) {
 
       // update replacement policy
       const auto way_idx = std::distance(set_begin, way);
       impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, module_address(*way), handle_pkt.ip, champsim::address{},
                                     handle_pkt.type, true);
 
-    }
+    }*/
 
     response_type response{handle_pkt.address, handle_pkt.v_address, way->data, metadata_thru, handle_pkt.instr_depend_on_me};
     for (auto* ret : handle_pkt.to_return) {

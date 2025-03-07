@@ -10,7 +10,7 @@
 
 class debug : public EventListener {
 public:
-  void process_event(event eventType, void* data);
+  void process_event(event eventType, void* data) {};
 };
 
 #endif
