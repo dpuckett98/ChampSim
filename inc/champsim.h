@@ -34,6 +34,13 @@ extern const unsigned LOG2_PAGE_SIZE;
 
 namespace champsim
 {
+
+// for controlling "perfect" components
+extern bool perfect_bp;
+extern bool perfect_L2C;
+extern bool perfect_L1D;
+extern bool perfect_L1I;
+
 struct deadlock : public std::exception {
   const uint32_t which;
   explicit deadlock(uint32_t cpu) : which(cpu) {}

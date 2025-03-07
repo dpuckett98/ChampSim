@@ -201,7 +201,18 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   // access cache
   auto [set_begin, set_end] = get_set_span(handle_pkt.address);
   auto way = std::find_if(set_begin, set_end, [matcher = matches_address(handle_pkt.address)](const auto& x) { return x.valid && matcher(x); });
-  const auto hit = (way != set_end);
+  // perfect caches
+  bool always_hits = false;
+  if (champsim::perfect_L2C && NAME == "cpu0_L2C") {
+      always_hits = true;
+  }
+  if (champsim::perfect_L1D && NAME == "cpu0_L1D") {
+      always_hits = true;
+  }
+  if (champsim::perfect_L1I && NAME == "cpu0_L1I") {
+      always_hits = true;
+  }
+  const auto hit = always_hits || (way != set_end);
   const auto useful_prefetch = (hit && way->prefetch && !handle_pkt.prefetch_from_this);
 
   if constexpr (champsim::debug_print) {
@@ -222,23 +233,31 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   if (hit) {
     sim_stats.hits.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
 
-    // update replacement policy
-    const auto way_idx = std::distance(set_begin, way);
-    impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, module_address(*way), handle_pkt.ip, champsim::address{},
-                                  handle_pkt.type, true);
+    if (!always_hits) {
+
+      // update replacement policy
+      const auto way_idx = std::distance(set_begin, way);
+      impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, module_address(*way), handle_pkt.ip, champsim::address{},
+                                    handle_pkt.type, true);
+
+    }
 
     response_type response{handle_pkt.address, handle_pkt.v_address, way->data, metadata_thru, handle_pkt.instr_depend_on_me};
     for (auto* ret : handle_pkt.to_return) {
       ret->push_back(response);
     }
+  
+    if (way != set_end) {
+      way->dirty |= (handle_pkt.type == access_type::WRITE);
 
-    way->dirty |= (handle_pkt.type == access_type::WRITE);
-
-    // update prefetch stats and reset prefetch bit
-    if (useful_prefetch) {
-      ++sim_stats.pf_useful;
-      way->prefetch = false;
+      // update prefetch stats and reset prefetch bit
+      if (useful_prefetch) {
+        ++sim_stats.pf_useful;
+        way->prefetch = false;
+      }
+    
     }
+    
   }
 
   return hit;

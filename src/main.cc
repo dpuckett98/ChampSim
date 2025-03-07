@@ -38,6 +38,13 @@
 
 namespace champsim
 {
+
+// for controlling "perfect" components
+bool perfect_bp;
+bool perfect_L2C;
+bool perfect_L1I;
+bool perfect_L1D;
+
 std::vector<phase_stats> main(environment& env, std::vector<phase_info>& phases, std::vector<tracereader>& traces);
 }
 
@@ -97,6 +104,12 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
 
   const bool warmup_given = (warmup_instr_option->count() > 0) || (deprec_warmup_instr_option->count() > 0);
   const bool simulation_given = (sim_instr_option->count() > 0) || (deprec_sim_instr_option->count() > 0);
+
+  // init perfect components
+  champsim::perfect_bp = false;
+  champsim::perfect_L2C = false;
+  champsim::perfect_L1I = false;
+  champsim::perfect_L1D = false;
 
   if (deprec_warmup_instr_option->count() > 0) {
     fmt::print("WARNING: option --warmup_instructions is deprecated. Use --warmup-instructions instead.\n");
