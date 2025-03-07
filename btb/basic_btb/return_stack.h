@@ -10,7 +10,7 @@
 #include "champsim.h"
 
 struct return_stack {
-  static constexpr std::size_t max_size = 64;
+  static constexpr std::size_t max_size = 128; //64;
   static constexpr std::size_t num_call_size_trackers = 1024;
 
   std::deque<champsim::address> stack;

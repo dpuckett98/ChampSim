@@ -17,7 +17,7 @@ struct direct_predictor {
   };
 
   static constexpr std::size_t sets = 1024;
-  static constexpr std::size_t ways = 8;
+  static constexpr std::size_t ways = 12;// 8;
 
   struct btb_entry_t {
     champsim::address ip_tag{};
