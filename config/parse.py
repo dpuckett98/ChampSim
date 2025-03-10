@@ -231,7 +231,7 @@ class NormalizedConfiguration:
         # Default core elements
         core_from_config = util.subdict(config_file,
             (
-                'frequency', 'ifetch_buffer_size', 'decode_buffer_size', 'dispatch_buffer_size', 'rob_size', 'lq_size',
+                'frequency', 'ifetch_buffer_size', 'decode_buffer_size', 'dispatch_buffer_size', 'register_file_size', 'rob_size', 'lq_size',
                 'sq_size', 'fetch_width', 'decode_width', 'dispatch_width', 'execute_width', 'lq_width', 'sq_width',
                 'retire_width', 'mispredict_penalty', 'scheduler_size', 'decode_latency', 'dispatch_latency',
                 'schedule_latency', 'execute_latency', 'branch_predictor', 'btb', 'DIB'
@@ -329,16 +329,17 @@ class NormalizedConfiguration:
         )
 
         pmem = util.chain(self.pmem, {
-            'name': 'DRAM', 'data_rate': 3200, 'frequency': 1600, 'channels': 1, 'ranks': 1, 'bankgroups': 4, 'banks': 8, 'bank_rows': 65536, 'bank_columns': 1024,
-            'channel_width': 8, 'wq_size': 64, 'rq_size': 64, 'tRP': 18, 'tRCD': 18, 'tCAS': 18, 'tRAS' : 38,
-            'refresh_period': 64, 'refreshes_per_period': 8192
+            'name': 'DRAM', 'data_rate': 3200, 'frequency': 1600, 'channels': 1, 'ranks': 1, 'bankgroups': 8, 'banks': 4, 'bank_rows': 65536, 'bank_columns': 1024,
+            'channel_width': 8, 'wq_size': 64, 'rq_size': 64, 'tRP': 24, 'tRCD': 24, 'tCAS': 24, 'tRAS' : 52,
+            'refresh_period': 32, 'refreshes_per_period': 8192
         })
         pmem = util.chain(pmem,(do_deprecation(pmem, pmem_deprecation_keys,pmem_deprecation_warnings)))
         
+        #convert vmem boolean to string
         vmem = util.chain(
             transform_for_keys(self.vmem, ('pte_page_size',), int_or_prefixed_size),
             self.vmem,
-            { 'pte_page_size': int_or_prefixed_size("4kB"), 'num_levels': 5, 'minor_fault_penalty': 200 }
+            { 'pte_page_size': int_or_prefixed_size("4kB"), 'num_levels': 5, 'minor_fault_penalty': 200, 'randomization': 1}
         )
 
         # Give cores numeric indices and default cache names
