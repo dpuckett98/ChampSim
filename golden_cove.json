@@ -47,8 +47,7 @@
 		"hit_latency": 5,
 		"fill_latency": 1,
 		"max_fill": 1,
-		"max_tag_check": 30,
-		"prefetcher": "berti"
+		"max_tag_check": 30
 	},
 
 	"L2C": {
@@ -58,7 +57,8 @@
 		"pq_size": 80,
 		"mshr_size": 48,
 		"fill_latency": 2,
-		"max_fill": 1
+		"max_fill": 1,
+    "prefetcher": "spp_dev"
 	},
 
 	"LLC": {
