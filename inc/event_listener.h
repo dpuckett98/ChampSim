@@ -29,11 +29,13 @@ enum class event {
   START_FETCH,
   END_FETCH,
   START_DECODE,
+  DO_DECODE,
   START_DISPATCH,
   START_SCHEDULE,
   END_SCHEDULE,
   START_EXECUTE,
   END_EXECUTE,
+  OPERATE_LSQ,
   RETIRE,
   // ooo_cpu.cc other events
   BRANCH,
@@ -67,7 +69,9 @@ enum class event {
   CACHE_OPERATE,
   CACHE_FINISH_PACKET,
   CACHE_FINISH_TRANSLATION,
-  CACHE_ISSUE_TRANSLATION
+  CACHE_ISSUE_TRANSLATION,
+  CACHE_NO_MSHR_ON_MISS,
+  CACHE_HIT_MSHR
 };
 
 // misc events
@@ -99,9 +103,10 @@ struct INITIALIZE_data {
   uint32_t cpu;
   std::deque<ooo_model_instr>::iterator begin;
   std::deque<ooo_model_instr>::iterator end;
+  bool fetch_stopped;
   long cycle;
 
-  INITIALIZE_data(uint32_t cpu_, std::deque<ooo_model_instr>::iterator begin_, std::deque<ooo_model_instr>::iterator end_, long cycle_) : cpu(cpu_), begin(begin_), end(end_), cycle(cycle_) {}
+  INITIALIZE_data(uint32_t cpu_, std::deque<ooo_model_instr>::iterator begin_, std::deque<ooo_model_instr>::iterator end_, bool _fetch_stopped, long cycle_) : cpu(cpu_), begin(begin_), end(end_), fetch_stopped(_fetch_stopped), cycle(cycle_) {}
 };
 
 struct CHECK_DIB_data {
@@ -139,6 +144,15 @@ struct START_DECODE_data {
   long cycle;
 
   START_DECODE_data(uint32_t cpu_, std::deque<ooo_model_instr>::iterator begin_, std::deque<ooo_model_instr>::iterator end_, long cycle_) : cpu(cpu_), begin(begin_), end(end_), cycle(cycle_) {}
+};
+
+struct DO_DECODE_data {
+  uint32_t cpu;
+  const ooo_model_instr instr;
+  bool early_resteer;
+  long cycle;
+  
+  DO_DECODE_data(uint32_t _cpu, const ooo_model_instr& _instr, bool _early_resteer, long _cycle) : cpu(_cpu), instr(_instr), early_resteer(_early_resteer), cycle(_cycle) {}
 };
 
 struct START_DISPATCH_data {
@@ -184,6 +198,15 @@ struct END_EXECUTE_data {
   long cycle;
 
   END_EXECUTE_data(uint32_t cpu_, std::vector<ooo_model_instr*>::iterator begin_, std::vector<ooo_model_instr*>::iterator end_, long cycle_) : cpu(cpu_), begin(begin_), end(end_), cycle(cycle_) {}
+};
+
+struct OPERATE_LSQ_data {
+  uint32_t cpu;
+  long int stores_issued;
+  long int loads_issued;
+  long cycle;
+
+  OPERATE_LSQ_data(uint32_t cpu_, long int _stores_issued, long int _loads_issued, long cycle_) : cpu(cpu_), stores_issued(_stores_issued), loads_issued(_loads_issued), cycle(cycle_) {}
 };
 
 struct RETIRE_data {
@@ -450,6 +473,8 @@ struct CACHE_INITIATE_TAG_CHECK_data {
 
 struct CACHE_OPERATE_data {
   std::string NAME;
+  const CACHE* cache;
+  const std::deque<CACHE::mshr_type> MSHR;
   long tags_checked;
   std::size_t tags_remaining;
   long stash_consumed;
@@ -459,7 +484,7 @@ struct CACHE_OPERATE_data {
   long unused_bw;
   long cycle;
 
-  CACHE_OPERATE_data(std::string NAME_, long tags_checked_, std::size_t tags_remaining_, long stash_consumed_, std::size_t stash_remaining_, std::vector<long long> channel_consumed_, long pq_consumed_, long unused_bw_, long cycle_) : NAME(NAME_), tags_checked(tags_checked_), tags_remaining(tags_remaining_), stash_consumed(stash_consumed_), stash_remaining(stash_remaining_), channel_consumed(channel_consumed_), pq_consumed(pq_consumed_), unused_bw(unused_bw_), cycle(cycle_) {}
+  CACHE_OPERATE_data(std::string NAME_, const CACHE* _cache, const std::deque<CACHE::mshr_type>& _MSHR, long tags_checked_, std::size_t tags_remaining_, long stash_consumed_, std::size_t stash_remaining_, std::vector<long long> channel_consumed_, long pq_consumed_, long unused_bw_, long cycle_) : NAME(NAME_), cache(_cache), MSHR(_MSHR), tags_checked(tags_checked_), tags_remaining(tags_remaining_), stash_consumed(stash_consumed_), stash_remaining(stash_remaining_), channel_consumed(channel_consumed_), pq_consumed(pq_consumed_), unused_bw(unused_bw_), cycle(cycle_) {}
 };
 
 struct CACHE_FINISH_PACKET_data {
@@ -491,6 +516,32 @@ struct CACHE_ISSUE_TRANSLATION_data {
   long cycle;
 
   CACHE_ISSUE_TRANSLATION_data(uint32_t cpu_, uint64_t instr_id_, champsim::address p_addr_, champsim::address v_addr_, access_type type_, long cycle_) : cpu(cpu_), instr_id(instr_id_), p_addr(p_addr_), v_addr(v_addr_), type(type_), cycle(cycle_) {}
+};
+
+struct CACHE_NO_MSHR_ON_MISS_data {
+  std::string NAME;
+  uint32_t cpu;
+  uint64_t instr_id;
+  champsim::address address;
+  champsim::address v_address;
+  access_type type;
+  bool prefetch_from_this;
+  long cycle;
+
+  CACHE_NO_MSHR_ON_MISS_data(std::string NAME_, uint32_t cpu_, uint64_t instr_id_, champsim::address address_, champsim::address v_address_, access_type type_, bool prefetch_from_this_, long cycle_) : NAME(NAME_), cpu(cpu_), instr_id(instr_id_), address(address_), v_address(v_address_), type(type_), prefetch_from_this(prefetch_from_this_), cycle(cycle_) {}
+};
+
+struct CACHE_HIT_MSHR_data {
+  std::string NAME;
+  uint32_t cpu;
+  uint64_t instr_id;
+  champsim::address address;
+  champsim::address v_address;
+  access_type type;
+  bool prefetch_from_this;
+  long cycle;
+
+  CACHE_HIT_MSHR_data(std::string NAME_, uint32_t cpu_, uint64_t instr_id_, champsim::address address_, champsim::address v_address_, access_type type_, bool prefetch_from_this_, long cycle_) : NAME(NAME_), cpu(cpu_), instr_id(instr_id_), address(address_), v_address(v_address_), type(type_), prefetch_from_this(prefetch_from_this_), cycle(cycle_) {}
 };
 
 // other things

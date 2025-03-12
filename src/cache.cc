@@ -389,6 +389,9 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
       if (mshr_entry->prefetch_from_this) {
         ++sim_stats.pf_useful;
       }
+      // call event listeners
+      CACHE_HIT_MSHR_data c2_data = CACHE_HIT_MSHR_data(NAME, handle_pkt.cpu, handle_pkt.instr_id, handle_pkt.address, handle_pkt.v_address, handle_pkt.type, handle_pkt.prefetch_from_this, current_time.time_since_epoch() / clock_period);
+      call_event_listeners(event::CACHE_NO_MSHR_ON_MISS, (void*) &c2_data);
     }
 
     // COLLECT STATS
@@ -397,6 +400,9 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
     *mshr_entry = mshr_type::merge(*mshr_entry, to_allocate);
   } else {
     if (mshr_full) { // not enough MSHR resource
+      // call event listeners
+      CACHE_NO_MSHR_ON_MISS_data c2_data = CACHE_NO_MSHR_ON_MISS_data(NAME, handle_pkt.cpu, handle_pkt.instr_id, handle_pkt.address, handle_pkt.v_address, handle_pkt.type, handle_pkt.prefetch_from_this, current_time.time_since_epoch() / clock_period);
+      call_event_listeners(event::CACHE_NO_MSHR_ON_MISS, (void*) &c2_data);
       return false;  // TODO should we allow prefetches anyway if they will not be filled to this level?
     }
 
@@ -578,7 +584,7 @@ long CACHE::operate()
   }
 
   // call event listeners
-  CACHE_OPERATE_data c_data = CACHE_OPERATE_data(NAME, tag_check_bw.amount_consumed(), std::size(inflight_tag_check), stash_bandwidth_consumed, std::size(translation_stash), channels_bandwidth_consumed, pq_bandwidth_consumed, initiate_tag_bw.amount_remaining(), current_time.time_since_epoch() / clock_period);
+  CACHE_OPERATE_data c_data = CACHE_OPERATE_data(NAME, this, MSHR, tag_check_bw.amount_consumed(), std::size(inflight_tag_check), stash_bandwidth_consumed, std::size(translation_stash), channels_bandwidth_consumed, pq_bandwidth_consumed, initiate_tag_bw.amount_remaining(), current_time.time_since_epoch() / clock_period);
   call_event_listeners(event::CACHE_OPERATE, (void*) &c_data);
 
   return progress + fill_bw.amount_consumed() + initiate_tag_bw.amount_consumed() + tag_check_bw.amount_consumed();

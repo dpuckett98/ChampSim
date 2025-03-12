@@ -134,7 +134,7 @@ void O3_CPU::initialize_instruction()
   // call event listeners
   auto window_start = IFETCH_BUFFER.begin() + start_capacity;
   auto window_end = IFETCH_BUFFER.end();
-  INITIALIZE_data i_data = INITIALIZE_data(cpu, window_start, window_end, current_time.time_since_epoch() / clock_period);
+  INITIALIZE_data i_data = INITIALIZE_data(cpu, window_start, window_end, stop_fetch || current_time < fetch_resume_time, current_time.time_since_epoch() / clock_period);
   call_event_listeners(event::INITIALIZE, (void*) &i_data);
 
 }
@@ -414,6 +414,8 @@ long O3_CPU::decode_instruction()
   auto do_decode = [&, this](auto& db_entry) {
     this->do_dib_update(db_entry);
 
+    bool early_resteer = false;
+
     // Resume fetch
     if (db_entry.branch_mispredicted) {
       // These branches detect the misprediction at decode
@@ -423,6 +425,7 @@ long O3_CPU::decode_instruction()
         db_entry.branch_mispredicted = 0;
         // pay misprediction penalty
         this->fetch_resume_time = this->current_time + BRANCH_MISPREDICT_PENALTY;
+        early_resteer = true;
       }
     }
     // Add to dispatch
@@ -432,6 +435,9 @@ long O3_CPU::decode_instruction()
       long cycle = current_time.time_since_epoch() / clock_period;
       fmt::print("[DECODE] do_decode instr_id: {} time: {}\n", db_entry.instr_id, this->current_time.time_since_epoch() / this->clock_period);
     }
+    
+    DO_DECODE_data d_data = DO_DECODE_data(cpu, db_entry, early_resteer, this->current_time.time_since_epoch() / this->clock_period);
+    call_event_listeners(event::DO_DECODE, (void*) &d_data);
   };
 
   auto do_dib_hit = [&, this](auto& dib_entry) {
@@ -666,6 +672,10 @@ long O3_CPU::operate_lsq()
       }
     }
   }
+
+  // event listener
+  OPERATE_LSQ_data o_data = OPERATE_LSQ_data(cpu, store_bw.amount_consumed(), load_bw.amount_consumed(), current_time.time_since_epoch() / clock_period);
+  call_event_listeners(event::OPERATE_LSQ, (void*) &o_data);
 
   return store_bw.amount_consumed() + load_bw.amount_consumed();
 }

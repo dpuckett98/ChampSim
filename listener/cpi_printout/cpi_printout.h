@@ -15,8 +15,10 @@
 class cpi_printout : public EventListener {
   long long total_retired_instrs = 0;
   int num_retired_instrs = 0;
+  int base_retired_instrs = 0;
   long curr_cycles = 0;
   bool in_warmup = true;
+  long long interval_num = 0;
   
   int printout_interval = 10000;
   
@@ -35,12 +37,18 @@ public:
       num_retired_instrs += std::distance(r_data->begin, r_data->end);
       total_retired_instrs += std::distance(r_data->begin, r_data->end);
       if (num_retired_instrs >= printout_interval) {
-        fmt::print("CPI at instr {} | cycles: {}, instrs: {}, cpi: {}\n", total_retired_instrs, curr_cycles, num_retired_instrs, (double)curr_cycles / (double)num_retired_instrs);
-        num_retired_instrs = 0;
+        fmt::print("interval {} total_instr {}\n", interval_num, total_retired_instrs);
+        fmt::print("interval {} cycles {}\n", interval_num, curr_cycles);
+        fmt::print("interval {} instrs {}\n", interval_num, num_retired_instrs - base_retired_instrs);
+        num_retired_instrs = num_retired_instrs % printout_interval;
+        base_retired_instrs = num_retired_instrs;
         curr_cycles = 0;
+        interval_num++;
       }
     } else if (eventType == event::PRE_CYCLE) {
       curr_cycles++;
+    } else if (eventType == event::END) {
+      fmt::print("##END##\n"); // this is a trigger for the post-processor to see if the trace finished running or not
     }
   }
 };
