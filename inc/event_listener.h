@@ -159,18 +159,20 @@ struct START_DISPATCH_data {
   uint32_t cpu;
   std::deque<ooo_model_instr>::iterator begin;
   std::deque<ooo_model_instr>::iterator end;
+  uint64_t instrs_from_dib;
   long cycle;
 
-  START_DISPATCH_data(uint32_t cpu_, std::deque<ooo_model_instr>::iterator begin_, std::deque<ooo_model_instr>::iterator end_, long cycle_) : cpu(cpu_), begin(begin_), end(end_), cycle(cycle_) {}
+  START_DISPATCH_data(uint32_t cpu_, std::deque<ooo_model_instr>::iterator begin_, std::deque<ooo_model_instr>::iterator end_, uint64_t instrs_from_dib_, long cycle_) : cpu(cpu_), begin(begin_), end(end_), instrs_from_dib(instrs_from_dib_), cycle(cycle_) {}
 };
 
 struct START_SCHEDULE_data {
   uint32_t cpu;
   std::deque<ooo_model_instr>::iterator begin;
   std::deque<ooo_model_instr>::iterator end;
+  int stop_cause;
   long cycle;
 
-  START_SCHEDULE_data(uint32_t cpu_, std::deque<ooo_model_instr>::iterator begin_, std::deque<ooo_model_instr>::iterator end_, long cycle_) : cpu(cpu_), begin(begin_), end(end_), cycle(cycle_) {}
+  START_SCHEDULE_data(uint32_t cpu_, std::deque<ooo_model_instr>::iterator begin_, std::deque<ooo_model_instr>::iterator end_, int stop_cause_, long cycle_) : cpu(cpu_), begin(begin_), end(end_), stop_cause(stop_cause_), cycle(cycle_) {}
 };
 
 struct END_SCHEDULE_data {

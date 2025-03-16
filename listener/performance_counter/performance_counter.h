@@ -86,6 +86,16 @@ class performance_counter : public EventListener {
   uint64_t cycles_retire_idle_empty = 0; // no instructions retired & rob is empty
   uint64_t cycles_retire_idle_other = 0; // no instrs retired, rob isn't empty
   
+  uint64_t cycles_schedule_stalled_SQ = 0;
+  uint64_t cycles_schedule_stalled_LQ = 0;
+  bool demand_miss_present = false;
+  uint64_t cycles_issue_stalled_l1d_miss = 0;
+  
+  bool last_cycle_rs_empty = true;
+  uint64_t periods_rs_empty = 0;
+  
+  uint64_t instrs_from_dib = 0;
+  
   long long total_retired_instrs = 0;
   int num_retired_instrs = 0;
   int base_retired_instrs = 0;
@@ -161,6 +171,11 @@ private:
     cycles_complete_idle = 0;
     cycles_retire_idle_empty = 0;
     cycles_retire_idle_other = 0;
+    cycles_schedule_stalled_SQ = 0;
+    cycles_schedule_stalled_LQ = 0;
+    cycles_issue_stalled_l1d_miss = 0;
+    periods_rs_empty = 0;
+    instrs_from_dib = 0;
   }
 
 public:
@@ -342,12 +357,17 @@ public:
         print(interval_num, "cycles_dib_idle", cycles_dib_idle);
         print(interval_num, "cycles_dispatch_idle", cycles_dispatch_idle);
         print(interval_num, "cycles_schedule_idle", cycles_schedule_idle);
+        print(interval_num, "cycles_schedule_stalled_LQ", cycles_schedule_stalled_LQ);
+        print(interval_num, "cycles_schedule_stalled_SQ", cycles_schedule_stalled_SQ);
         print(interval_num, "cycles_issue_idle", cycles_issue_idle);
+        print(interval_num, "cycles_issue_stalled_l1d_miss", cycles_issue_stalled_l1d_miss);
         print(interval_num, "cycles_store_idle", cycles_store_idle);
         print(interval_num, "cycles_load_idle", cycles_load_idle);
         print(interval_num, "cycles_complete_idle", cycles_complete_idle);
         print(interval_num, "cycles_retire_idle_rob_empty", cycles_retire_idle_empty);
         print(interval_num, "cycles_retire_idle_rob_not_empty", cycles_retire_idle_other);
+        print(interval_num, "periods_rs_empty", periods_rs_empty);
+        print(interval_num, "instrs_from_dib", instrs_from_dib);
         // misc TODO
         
         
@@ -420,7 +440,7 @@ public:
     } else if (eventType == event::CACHE_OPERATE) {
       CACHE_OPERATE_data* c_data = static_cast<CACHE_OPERATE_data *>(data);
       if (c_data->NAME == "cpu0_L1D") {
-        bool demand_miss_present = false;
+        demand_miss_present = false;
         for (auto mshr : c_data->MSHR) {
           if (mshr.type == access_type::LOAD) {
             demand_miss_present = true;
@@ -462,15 +482,35 @@ public:
       if (std::distance(c_data->begin, c_data->end) == 0) {
         cycles_dispatch_idle++;
       }
+      instrs_from_dib += c_data->instrs_from_dib;
     } else if (eventType == event::START_SCHEDULE) {
       START_SCHEDULE_data* c_data = static_cast<START_SCHEDULE_data *>(data);
       if (std::distance(c_data->begin, c_data->end) == 0) {
         cycles_schedule_idle++;
       }
+      if (c_data->stop_cause == 1) {
+        cycles_schedule_stalled_LQ++;
+      } else if (c_data->stop_cause == 2) {
+        cycles_schedule_stalled_SQ++;
+      }
     } else if (eventType == event::START_EXECUTE) {
       START_EXECUTE_data* c_data = static_cast<START_EXECUTE_data *>(data);
       if (std::distance(c_data->begin, c_data->end) == 0) {
         cycles_issue_idle++;
+        if (demand_miss_present) {
+          cycles_issue_stalled_l1d_miss++;
+        }
+        bool rs_empty = true;
+        for (auto instr : o3_cpu->ROB) {
+          if (instr.scheduled && !instr.executed) {
+            rs_empty = false;
+            break;
+          }
+        }
+        if (!last_cycle_rs_empty && rs_empty) { // track the start of each period
+          periods_rs_empty++;
+        }
+        last_cycle_rs_empty = rs_empty;
       }
     } else if (eventType == event::END_EXECUTE) {
       END_EXECUTE_data* c_data = static_cast<END_EXECUTE_data *>(data);

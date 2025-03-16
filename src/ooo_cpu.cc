@@ -447,6 +447,7 @@ long O3_CPU::decode_instruction()
   std::for_each(decode_buffer_begin, decode_buffer_end, do_decode);
   std::for_each(dib_hit_buffer_begin, dib_hit_buffer_end, do_dib_hit);
 
+  uint64_t instrs_from_dib = std::distance(dib_hit_buffer_begin, dib_hit_buffer_end);
   long progress{std::distance(dib_hit_buffer_begin, dib_hit_buffer_end) + std::distance(decode_buffer_begin, decode_buffer_end)};
 
   size_t init_size = DISPATCH_BUFFER.size();
@@ -456,7 +457,7 @@ long O3_CPU::decode_instruction()
   DIB_HIT_BUFFER.erase(dib_hit_buffer_begin, dib_hit_buffer_end);
 
   // call event listeners
-  START_DISPATCH_data s_data = START_DISPATCH_data(cpu, std::begin(DISPATCH_BUFFER) + init_size, std::end(DISPATCH_BUFFER), current_time.time_since_epoch() / clock_period);
+  START_DISPATCH_data s_data = START_DISPATCH_data(cpu, std::begin(DISPATCH_BUFFER) + init_size, std::end(DISPATCH_BUFFER), instrs_from_dib, current_time.time_since_epoch() / clock_period);
   call_event_listeners(event::START_DISPATCH, (void*) &s_data);
 
   return progress;
@@ -488,8 +489,20 @@ long O3_CPU::dispatch_instruction()
     num_entering_scheduler++;
   }
 
+  // for performance counters
+  int stop_cause = 0; // 0 = none; 1 = LQ full; 2 = SQ full
+  if (available_dispatch_bandwidth.has_remaining() && !std::empty(DISPATCH_BUFFER) && DISPATCH_BUFFER.front().ready_time <= current_time
+         && std::size(ROB) != ROB_SIZE) {
+    if (!((std::size_t)std::count_if(std::begin(LQ), std::end(LQ), [](const auto& lq_entry) { return !lq_entry.has_value(); })
+             >= std::size(DISPATCH_BUFFER.front().source_memory))) {
+      stop_cause = 1;
+    } else if (!((std::size(DISPATCH_BUFFER.front().destination_memory) + std::size(SQ)) <= SQ_SIZE)) {
+      stop_cause = 2;
+    }
+  }
+
   // call event listeners
-  START_SCHEDULE_data s_data = START_SCHEDULE_data(cpu, std::next(std::end(ROB), -num_entering_scheduler), std::end(ROB), current_time.time_since_epoch() / clock_period);
+  START_SCHEDULE_data s_data = START_SCHEDULE_data(cpu, std::next(std::end(ROB), -num_entering_scheduler), std::end(ROB), stop_cause, current_time.time_since_epoch() / clock_period);
   call_event_listeners(event::START_SCHEDULE, (void*) &s_data);
 
   return available_dispatch_bandwidth.amount_consumed();

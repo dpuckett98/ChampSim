@@ -25,7 +25,7 @@
 			"dispatch_latency": 2,
 			"schedule_latency": 5,
 			"execute_latency": 1,
-			"dib_set": 256,
+			"dib_set": 128,
 			"dib_way": 8,
 			"dib_window": 32,
 			"branch_predictor": "hp_new",
