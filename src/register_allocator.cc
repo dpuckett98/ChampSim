@@ -80,6 +80,15 @@ int RegisterAllocator::count_reg_dependencies(const ooo_model_instr& instr) cons
   return static_cast<int>(std::count_if(std::begin(instr.source_registers), std::end(instr.source_registers), [this](auto reg) { return !isValid(reg); }));
 }
 
+std::vector<uint64_t> RegisterAllocator::get_producing_instructions(const ooo_model_instr& instr) const
+{
+  std::vector<uint64_t> results;
+  for (auto it = std::begin(instr.source_registers); it < std::end(instr.source_registers); it++) {
+    results.push_back(physical_register_file.at(*it).producing_instruction_id);
+  }
+  return results;
+}
+
 void RegisterAllocator::reset_frontend_RAT()
 {
   std::copy(std::begin(backend_RAT), std::end(backend_RAT), std::begin(frontend_RAT));

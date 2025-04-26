@@ -12,7 +12,8 @@ def process_file(filename):
                 found_end = True
                 data.append(curr_data)
                 break
-            if split[0] != "interval" or len(split) != 4:
+            split = split[1:]
+            if len(split) != 4 or split[0] != "interval":
                 continue
             if int(split[1]) != curr_interval:
                 data.append(curr_data)
@@ -23,7 +24,8 @@ def process_file(filename):
     return pd.DataFrame(data)
 
 if __name__ == "__main__":
-    df = process_file("test.txt")
+    df = process_file("results_1.txt")
     print(df)
+    print(df["d_cache_comp"])
     print(df.iloc[0])
     print(df.iloc[1])
