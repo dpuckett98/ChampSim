@@ -391,7 +391,7 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
       }
       // call event listeners
       CACHE_HIT_MSHR_data c2_data = CACHE_HIT_MSHR_data(NAME, handle_pkt.cpu, handle_pkt.instr_id, handle_pkt.address, handle_pkt.v_address, handle_pkt.type, handle_pkt.prefetch_from_this, current_time.time_since_epoch() / clock_period);
-      call_event_listeners(event::CACHE_NO_MSHR_ON_MISS, (void*) &c2_data);
+      call_event_listeners(event::CACHE_HIT_MSHR, (void*) &c2_data);
     }
 
     // COLLECT STATS

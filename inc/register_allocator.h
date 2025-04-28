@@ -8,6 +8,7 @@
 #define REG_ALLOC_H
 
 #include "instruction.h"
+#include <vector>
 
 struct physical_register {
   uint16_t arch_reg_index;
@@ -34,6 +35,7 @@ public:
   bool isAllocated(PHYSICAL_REGISTER_ID archreg) const;
   unsigned long count_free_registers() const;
   int count_reg_dependencies(const ooo_model_instr& instr) const;
+  std::vector<uint64_t> get_producing_instructions(const ooo_model_instr& instr) const;
   void reset_frontend_RAT();
   void print_deadlock();
 };

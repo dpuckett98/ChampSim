@@ -430,7 +430,7 @@ public:
       } else {
         cache_waiting_on_mshr[c_data->NAME]++;
       }
-    } else if (eventType == event::CACHE_HIT_MSHR) {
+    } else if (eventType == event::CACHE_HIT_MSHR) { // this event was totally ignored due to a typo --> all parts of this event were actually counted as CACHE_NO_MSHR_ON_MISS (this may actually be significant --> I'd like to re-run the performance counter data, or at least drop the relevant columns from the dataset & re-train); the actual data is less precise & less useful than it would be otherwise
       CACHE_HIT_MSHR_data* c_data = static_cast<CACHE_HIT_MSHR_data *>(data);
       if (c_data->type == access_type::PREFETCH) {
         cache_hit_mshr_prefetch[c_data->NAME]++;

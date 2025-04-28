@@ -13,7 +13,8 @@ def process_file(filename, bmk, smp, binary):
                 found_end = True
                 data.append(curr_data)
                 break
-            if split[0] != "interval" or len(split) != 4:
+            split = split[1:]
+            if len(split) != 4 or split[0] != "interval":
                 continue
             if int(split[1]) != curr_interval:
                 data.append(curr_data)
@@ -68,5 +69,10 @@ if __name__ == "__main__":
     #create_and_save_dataframe("/mnt/research/Gratz_Paul_V/Students/Puckett_Daniel/ChampSim_event_listeners/perfect_logs_v1/2025-03-17/44_cores/1/", "test_dataframe.csv")
     #df = process_file("test.txt")
     #print(df)
+    #print(df.iloc[0])
+    #print(df.iloc[1])
+    #df = process_file("results_1.txt")
+    #print(df)
+    #print(df["d_cache_comp"])
     #print(df.iloc[0])
     #print(df.iloc[1])
