@@ -102,7 +102,7 @@ class performance_counter : public EventListener {
   long curr_cycles = 0;
   bool in_warmup = true;
   long long interval_num = 0;
-  int printout_interval = 100000;
+  int printout_interval = 10000;
 
 private:
   void print(long long interval, std::string name, uint64_t val) {
