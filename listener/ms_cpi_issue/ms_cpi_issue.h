@@ -234,12 +234,11 @@ class ms_cpi_issue : public EventListener {
     } else if (eventType == event::RETIRE) {
       RETIRE_data* r_data = static_cast<RETIRE_data *>(data);
       if (std::distance(r_data->begin, r_data->end) > 0) {
-        last_retired_instr = *r_data->end;
+        last_retired_instr = *std::prev(r_data->end);
       }
-      
       // remove cache missses from retired instructions
       for (auto instr = r_data->begin; instr != r_data->end; instr++) {
-        int idx = 0;
+	int idx = 0;
         std::vector<int> to_remove = std::vector<int>();
         bool has_d_cache_miss = false;
         for (auto cm : cache_misses) {
@@ -283,7 +282,6 @@ class ms_cpi_issue : public EventListener {
         dcache_miss_history.pop_back();
         //fmt::print("Removing {}\n", last_retired_instr.instr_id - dcache_miss_history.size() + 1);
       }
-      
       // do printout
       num_retired_instrs += std::distance(r_data->begin, r_data->end);
       total_retired_instrs += std::distance(r_data->begin, r_data->end);
