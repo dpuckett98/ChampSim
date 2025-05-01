@@ -98,7 +98,7 @@ class ms_cpi_issue : public EventListener {
     fmt::print("ms_cpi_issue interval {} icache_comp {}\n", last_interval_num, last_icache_comp / WIDTH);
     fmt::print("ms_cpi_issue interval {} bp_comp {}\n", last_interval_num, last_bp_comp / WIDTH);
     fmt::print("ms_cpi_issue interval {} drained_other_comp {}\n", last_interval_num, last_drained_other_comp / WIDTH);
-    fmt::print("ms_cpi_issue interval {} d_cache_comp {}\n", last_interval_num, last_d_cache_comp / WIDTH);
+    fmt::print("ms_cpi_issue interval {} dcache_comp {}\n", last_interval_num, last_d_cache_comp / WIDTH);
     fmt::print("ms_cpi_issue interval {} depend_comp {}\n", last_interval_num, last_depend_comp / WIDTH);
     fmt::print("ms_cpi_issue interval {} stalled_other_comp {}\n", last_interval_num, last_stalled_other_comp / WIDTH);
     fmt::print("ms_cpi_issue interval {} cycles {}\n", last_interval_num, last_curr_cycles);
@@ -234,7 +234,7 @@ class ms_cpi_issue : public EventListener {
     } else if (eventType == event::RETIRE) {
       RETIRE_data* r_data = static_cast<RETIRE_data *>(data);
       if (std::distance(r_data->begin, r_data->end) > 0) {
-        last_retired_instr = *r_data->end;
+        last_retired_instr = *std::prev(r_data->end);
       }
       
       // remove cache missses from retired instructions
@@ -287,6 +287,8 @@ class ms_cpi_issue : public EventListener {
       // do printout
       num_retired_instrs += std::distance(r_data->begin, r_data->end);
       total_retired_instrs += std::distance(r_data->begin, r_data->end);
+    } else if (eventType == event::END) {
+      fmt::print("##END##\n"); // this is a trigger for the post-processor to see if the trace finished running or not
     }
   }
 };

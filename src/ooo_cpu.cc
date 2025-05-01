@@ -491,7 +491,7 @@ long O3_CPU::dispatch_instruction()
 
   // for performance counters
   int stop_cause = 0; // 0 = none; 1 = LQ full; 2 = SQ full
-  if (available_dispatch_bandwidth.has_remaining() && !std::empty(DISPATCH_BUFFER) && DISPATCH_BUFFER.front().ready_time <= current_time
+  /*if (available_dispatch_bandwidth.has_remaining() && !std::empty(DISPATCH_BUFFER) && DISPATCH_BUFFER.front().ready_time <= current_time
          && std::size(ROB) != ROB_SIZE) {
     if (!((std::size_t)std::count_if(std::begin(LQ), std::end(LQ), [](const auto& lq_entry) { return !lq_entry.has_value(); })
              >= std::size(DISPATCH_BUFFER.front().source_memory))) {
@@ -499,7 +499,7 @@ long O3_CPU::dispatch_instruction()
     } else if (!((std::size(DISPATCH_BUFFER.front().destination_memory) + std::size(SQ)) <= SQ_SIZE)) {
       stop_cause = 2;
     }
-  }
+  }*/
 
   // call event listeners
   START_SCHEDULE_data s_data = START_SCHEDULE_data(cpu, std::next(std::end(ROB), -num_entering_scheduler), std::end(ROB), stop_cause, current_time.time_since_epoch() / clock_period);

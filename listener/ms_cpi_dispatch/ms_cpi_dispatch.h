@@ -20,7 +20,7 @@
 
 class ms_cpi_dispatch : public EventListener {
   
-  double WIDTH = 5; // todo: calculate this automatically
+  double WIDTH = 6; // todo: calculate this automatically
   
   std::deque<bool> dcache_miss_history;
   int dmh_size = 600;
@@ -93,23 +93,23 @@ class ms_cpi_dispatch : public EventListener {
   }
   
   void print_counters() {
-    fmt::print("ms_cpi_issue interval {} total_instr {}\n", last_interval_num, last_total_retired_instrs);
-    fmt::print("ms_cpi_issue interval {} instrs {}\n", last_interval_num, last_num_retired_instrs - last_base_retired_instrs);
-    fmt::print("ms_cpi_issue interval {} base_comp {}\n", last_interval_num, last_base_comp / WIDTH);
-    fmt::print("ms_cpi_issue interval {} icache_comp {}\n", last_interval_num, last_icache_comp / WIDTH);
-    fmt::print("ms_cpi_issue interval {} bp_comp {}\n", last_interval_num, last_bp_comp / WIDTH);
-    fmt::print("ms_cpi_issue interval {} drained_other_comp {}\n", last_interval_num, last_drained_other_comp / WIDTH);
-    fmt::print("ms_cpi_issue interval {} dcache_comp {}\n", last_interval_num, last_d_cache_comp / WIDTH);
-    fmt::print("ms_cpi_issue interval {} depend_comp {}\n", last_interval_num, last_depend_comp / WIDTH);
-    fmt::print("ms_cpi_issue interval {} stalled_other_comp {}\n", last_interval_num, last_stalled_other_comp / WIDTH);
-    fmt::print("ms_cpi_issue interval {} cycles {}\n", last_interval_num, last_curr_cycles);
-    fmt::print("ms_cpi_issue interval {} missing_cycles {}\n", last_interval_num, last_curr_cycles - ((last_base_comp + last_icache_comp + last_bp_comp + last_drained_other_comp + last_d_cache_comp + last_depend_comp + last_stalled_other_comp) / WIDTH));
+    fmt::print("ms_cpi_dispatch interval {} total_instr {}\n", last_interval_num, last_total_retired_instrs);
+    fmt::print("ms_cpi_dispatch interval {} instrs {}\n", last_interval_num, last_num_retired_instrs - last_base_retired_instrs);
+    fmt::print("ms_cpi_dispatch interval {} base_comp {}\n", last_interval_num, last_base_comp / WIDTH);
+    fmt::print("ms_cpi_dispatch interval {} icache_comp {}\n", last_interval_num, last_icache_comp / WIDTH);
+    fmt::print("ms_cpi_dispatch interval {} bp_comp {}\n", last_interval_num, last_bp_comp / WIDTH);
+    fmt::print("ms_cpi_dispatch interval {} drained_other_comp {}\n", last_interval_num, last_drained_other_comp / WIDTH);
+    fmt::print("ms_cpi_dispatch interval {} dcache_comp {}\n", last_interval_num, last_d_cache_comp / WIDTH);
+    fmt::print("ms_cpi_dispatch interval {} depend_comp {}\n", last_interval_num, last_depend_comp / WIDTH);
+    fmt::print("ms_cpi_dispatch interval {} stalled_other_comp {}\n", last_interval_num, last_stalled_other_comp / WIDTH);
+    fmt::print("ms_cpi_dispatch interval {} cycles {}\n", last_interval_num, last_curr_cycles);
+    /*fmt::print("ms_cpi_dispatch interval {} missing_cycles {}\n", last_interval_num, last_curr_cycles - ((last_base_comp + last_icache_comp + last_bp_comp + last_drained_other_comp + last_d_cache_comp + last_depend_comp + last_stalled_other_comp) / WIDTH));
     double uncounted_blamed = 0;
     for (auto it = last_blamed_instrs.begin(); it != last_blamed_instrs.end(); it++) {
       std::cout << "missing instr " << it->first << std::endl;
       uncounted_blamed += it->second;
     }
-    fmt::print("ms_cpi_issue interval {} uncounted_blamed {}\n", last_interval_num, uncounted_blamed);
+    fmt::print("ms_cpi_dispatch interval {} uncounted_blamed {}\n", last_interval_num, uncounted_blamed);*/
   }
 
   void process_event(event eventType, void* data) {
@@ -124,63 +124,38 @@ class ms_cpi_dispatch : public EventListener {
     }
     
     // not in warmup
-    if (eventType == event::START_DISPATCH) {
-      START_DISPATCH_data* s_data = static_cast<START_DISPATCH_data*>(data);
-      float n = std::distance(s_data->begin, s_data->end);
-      double f = n;
+    if (eventType == event::START_SCHEDULE) {
+      START_SCHEDULE_data* s_data = static_cast<START_SCHEDULE_data*>(data);
+      double f = std::distance(s_data->begin, s_data->end);
       base_comp += f;
-      double omf = WIDTH - n;
+      double omf = WIDTH - f;
       
-      for (auto iter = s_data->begin; iter < s_data->end; iter++) {
+      /*for (auto iter = s_data->begin; iter < s_data->end; iter++) {
         fmt::print("Dispatched {}\n", iter->instr_id);
-      }
+      }*/
       
       if (s_data->begin != s_data->end) {
         last_dispatched_instr = *(s_data->end-1);
       }
       
       if (omf > 0) {
-        // an instruction in the DECODE_BUFFER or DIB_HIT_BUFFER has entered the decode/dib pipeline, but may not have finished
-        // if the next instruction is not in the decode buffer or dib hit buffer; or is in one of the buffers but isn't ready (assuming that there will be a steady flow of instructions with no bubbles except for when we get performance events)
-        // this is different from, but more accurate than what MS CPI Stacks does -- might frame this as just adapting their algorithm to ChampSim
-        bool fe_drained = true;
-        fmt::print("{} {}\n", o3_cpu->DECODE_BUFFER.empty(), o3_cpu->DIB_HIT_BUFFER.empty());
-        if (!o3_cpu->DECODE_BUFFER.empty() && o3_cpu->DECODE_BUFFER.front().ready_time <= o3_cpu->current_time && o3_cpu->DECODE_BUFFER.front().instr_id == last_dispatched_instr.instr_id + 1) {
-          fe_drained = false; // if the next instruction is in DECODE_BUFFER and is ready, then the FE isn't drained
-          fmt::print("Backend stall because instr in DECODE_BUFFER\n");
-        }
-        if (!o3_cpu->DIB_HIT_BUFFER.empty() && o3_cpu->DIB_HIT_BUFFER.front().ready_time <= o3_cpu->current_time && o3_cpu->DIB_HIT_BUFFER.front().instr_id == last_dispatched_instr.instr_id + 1) {
-          fe_drained = false; // if the next instruction is in DIB_HIT_BUFFER and is ready, then the FE isn't drained
-          fmt::print("Backend stall because instr in DIB_HIT_BUFFER\n");
-        }
-        // if there are no instructions in the RoB that are scheduled but not executed
-        /*bool rs_empty = true;
-        ooo_model_instr oldest_ready_instr = ooo_model_instr(0, input_instr());
-        for (auto instr : *ROB) {
-          if (instr.scheduled && !instr.executed) {
-            if (rs_empty || instr.instr_id < oldest_ready_instr.instr_id) {
-              rs_empty = false;
-              oldest_ready_instr = instr;
-            }
-            //break;
-          }
-        }
-        if (rs_empty) { // FRONTEND STALL
-          // find the youngest executed instruction; this is either the last retired instruction, or the youngest executed instruction in the ROB
-          auto youngest_executed_instr = last_retired_instr;
-          for (auto instr : *ROB) {
-            if (instr.executed && instr.instr_id > youngest_executed_instr.instr_id) {
-              youngest_executed_instr = instr;
-            }
-          }
-          // check if the oldest instruction in the FE pipeline (which is the instruction following the youngest issued instruction) had an i-cache miss
+        // FE drained because dispatch_buffer is empty or the first instruction in the dispatch buffer isn't ready
+        bool fe_drained = std::empty(o3_cpu->DISPATCH_BUFFER) || o3_cpu->DISPATCH_BUFFER.front().ready_time > o3_cpu->current_time;
+        
+        // BE stalled because ROB, LQ, or SQ is full
+        bool rob_full = std::size(o3_cpu->ROB) == o3_cpu->ROB_SIZE;
+        bool lq_full = ((std::size_t)std::count_if(std::begin(o3_cpu->LQ), std::end(o3_cpu->LQ), [](const auto& lq_entry) { return !lq_entry.has_value(); }) < std::size(o3_cpu->DISPATCH_BUFFER.front().source_memory));
+        bool sq_full = ((std::size(o3_cpu->DISPATCH_BUFFER.front().destination_memory) + std::size(o3_cpu->SQ)) > o3_cpu->SQ_SIZE);
+        bool be_stalled = rob_full || lq_full || sq_full;
+        
+        if (fe_drained) {
           bool i_cache_miss = false;
           for (auto cm : cache_misses) {
-            if (cm.first == youngest_executed_instr.instr_id + 1 && cm.second == "cpu0_L1I") {
+            if (cm.first == last_dispatched_instr.instr_id + 1 && cm.second == "cpu0_L1I") {
               i_cache_miss = true;
             }
           }
-          bool bp_miss = youngest_executed_instr.branch_mispredicted; // check if the youngest executed instruction had a BP miss
+          bool bp_miss = last_dispatched_instr.branch_mispredicted; // check if the youngest dispatched instruction had a BP miss
           if (i_cache_miss) {
             icache_comp += omf;
           } else if (bp_miss) {
@@ -188,41 +163,47 @@ class ms_cpi_dispatch : public EventListener {
           } else {
             drained_other_comp += omf;
           }
-        } else { // BACKEND STALL
-          // find all the producing instrs
-          std::vector<uint64_t> producing_instr_ids = o3_cpu->reg_allocator.get_producing_instructions(oldest_ready_instr);
-          // pick youngest producing instr that we have cache miss information on
-          uint64_t producing_instr_id = 0;
-          bool found_producing_instr_id = false;
-          for (auto instr_id : producing_instr_ids) {
-            if ((instr_id > producing_instr_id || !found_producing_instr_id) && (instr_id > last_retired_instr.instr_id - dcache_miss_history.size())) {
-              producing_instr_id = instr_id;
-              found_producing_instr_id = true;
+        } else if (be_stalled) {
+          // find and blame the instruction causing the stall (oldest instruction in ROB, LQ, or SQ)
+          uint64_t blamed_instr = 0;
+          if (rob_full) {
+            blamed_instr = o3_cpu->ROB.front().instr_id;
+          } else if (lq_full) {
+            // find and blame oldest instruction in LQ
+            bool found = false;
+            for (auto lq_entry : o3_cpu->LQ) {
+              if (lq_entry.has_value()) {
+                if (!found || lq_entry.value().producer_id < blamed_instr) {
+                  blamed_instr = lq_entry.value().producer_id;
+                }
+              }
             }
-          }
-          if (producing_instr_id <= last_retired_instr.instr_id - dcache_miss_history.size()) {
-            found_producing_instr_id = false;
+            if (!found) {
+              fmt::print("Error! LQ full, but didn't find any entry in it\n");
+            }
+          } else if (sq_full) {
+            blamed_instr = o3_cpu->SQ.front().instr_id;
+          } else {
+            fmt::print("Error! ROB, LQ, SQ all aren't full...\n");
           }
           
-          if (found_producing_instr_id) {
-            // if producing instruction already retired...
-            if (producing_instr_id <= last_retired_instr.instr_id) {
-              int idx = dcache_miss_history.size() - (last_retired_instr.instr_id - producing_instr_id) - 1;
-              if (dcache_miss_history[idx]) {
-                d_cache_comp += omf;
-              } else {
-                depend_comp += omf;
-              }
-              // otherwise associate time with the producing instruction (it'll be added to the given components when it retires)
-            } else if (blamed_instrs.count(producing_instr_id) > 0) {
-              blamed_instrs[producing_instr_id] += omf;
+          // if blamed instruction already retired...
+          if (blamed_instr <= last_retired_instr.instr_id) {
+            int idx = dcache_miss_history.size() - (last_retired_instr.instr_id - blamed_instr) - 1;
+            if (dcache_miss_history[idx]) {
+              d_cache_comp += omf;
             } else {
-              blamed_instrs[producing_instr_id] = omf;
+              depend_comp += omf;
             }
-          } else { // if all the producing instructions have completed, then blame dependency (TODO: this may be wrong)
-            stalled_other_comp += omf;
+            // otherwise associate time with the blamed instruction (it'll be added to the given components when it retires)
+          } else if (blamed_instrs.count(blamed_instr) > 0) {
+            blamed_instrs[blamed_instr] += omf;
+          } else {
+            blamed_instrs[blamed_instr] = omf;
           }
-        }*/
+        } else {
+          fmt::print("Problem! Neither fe_drained nor be_stalled is true, but we didn't use all the available BW\n");
+        }
       }
     } else if (eventType == event::CACHE_TRY_HIT) {
       CACHE_TRY_HIT_data* c_data = static_cast<CACHE_TRY_HIT_data *>(data);
@@ -256,7 +237,7 @@ class ms_cpi_dispatch : public EventListener {
     } else if (eventType == event::RETIRE) {
       RETIRE_data* r_data = static_cast<RETIRE_data *>(data);
       if (std::distance(r_data->begin, r_data->end) > 0) {
-        last_retired_instr = *r_data->end;
+        last_retired_instr = *std::prev(r_data->end);
       }
       
       // remove cache missses from retired instructions
@@ -279,7 +260,6 @@ class ms_cpi_dispatch : public EventListener {
         
         // count cycles if it's in blamed instrs
         if (last_blamed_instrs.find(instr->instr_id) != last_blamed_instrs.end()) {
-        //if (last_blamed_instrs.count(instr->instr_id) > 0) {
           if (has_d_cache_miss) {
             last_d_cache_comp += last_blamed_instrs[instr->instr_id];
           } else {
@@ -288,7 +268,6 @@ class ms_cpi_dispatch : public EventListener {
           last_blamed_instrs.erase(instr->instr_id);
         }
         if (blamed_instrs.find(instr->instr_id) != blamed_instrs.end()) {
-        //if (blamed_instrs.count(instr->instr_id) > 0) {
           if (has_d_cache_miss) {
             d_cache_comp += blamed_instrs[instr->instr_id];
           } else {
@@ -299,16 +278,16 @@ class ms_cpi_dispatch : public EventListener {
         
         // update dcache miss history
         dcache_miss_history.push_front(has_d_cache_miss);
-        //fmt::print("Adding {}\n", instr->instr_id);
       }
       while (dcache_miss_history.size() > dmh_size) {
         dcache_miss_history.pop_back();
-        //fmt::print("Removing {}\n", last_retired_instr.instr_id - dcache_miss_history.size() + 1);
       }
       
       // do printout
       num_retired_instrs += std::distance(r_data->begin, r_data->end);
       total_retired_instrs += std::distance(r_data->begin, r_data->end);
+    } else if (eventType == event::END) {
+      fmt::print("##END##\n"); // this is a trigger for the post-processor to see if the trace finished running or not
     }
   }
 };
