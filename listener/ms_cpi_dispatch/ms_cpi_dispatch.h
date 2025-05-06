@@ -175,6 +175,7 @@ class ms_cpi_dispatch : public EventListener {
               if (lq_entry.has_value()) {
                 if (!found || lq_entry.value().producer_id < blamed_instr) {
                   blamed_instr = lq_entry.value().producer_id;
+                  found = true;
                 }
               }
             }
