@@ -269,16 +269,28 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   auto way = std::find_if(set_begin, set_end, [matcher = matches_address(handle_pkt.address)](const auto& x) { return x.valid && matcher(x); });
   // perfect caches
   bool always_hits = false;
+  if (champsim::perfect_LLC && NAME == "cpu0_LLC") {
+    always_hits = true;
+  }
   if (champsim::perfect_L2C && NAME == "cpu0_L2C") {
-      always_hits = true;
+    always_hits = true;
   }
   if (champsim::perfect_L1D && NAME == "cpu0_L1D") {
-      always_hits = true;
+    always_hits = true;
+  }
+  if (champsim::perfect_DTLB && NAME == "cpu0_DTLB") {
+    always_hits = true;
   }
   if (champsim::perfect_L1I && NAME == "cpu0_L1I") {
-      always_hits = true;
+    always_hits = true;
   }
-  const auto hit = always_hits || (way != set_end);
+  /*if (handle_pkt.instr_id <= champsim::start_instr) { // this is BROKEN because some instrs (TLB misses?) always have instr_id == 0
+    always_hits = false;
+  }
+  if (NAME == "cpu0_L2C") {
+    fmt::print("{} curr_instr: {} start_instr: {}\n", always_hits, handle_pkt.instr_id, champsim::start_instr);
+  }*/
+  const auto hit = (!warmup && always_hits) || (way != set_end);
   const auto useful_prefetch = (hit && way->prefetch && !handle_pkt.prefetch_from_this);
 
   if constexpr (champsim::debug_print) {

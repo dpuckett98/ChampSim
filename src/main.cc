@@ -44,6 +44,9 @@ bool perfect_bp;
 bool perfect_L2C;
 bool perfect_L1I;
 bool perfect_L1D;
+bool perfect_LLC;
+bool perfect_DTLB;
+uint64_t start_instr;
 
 std::vector<phase_stats> main(environment& env, std::vector<phase_info>& phases, std::vector<tracereader>& traces);
 }
@@ -95,6 +98,12 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
 
   app.add_option("--listeners", listener_names)->delimiter(',');
 
+  app.add_option("--start_instr", champsim::start_instr);
+  app.add_flag("--perfect_bp", champsim::perfect_bp);
+  app.add_flag("--perfect_L1D", champsim::perfect_L1D);
+  app.add_flag("--perfect_L1I", champsim::perfect_L1I);
+  app.add_flag("--perfect_L2C", champsim::perfect_L2C);
+
   app.add_option("traces", trace_names, "The paths to the traces")->required()->expected(NUM_CPUS)->check(CLI::ExistingFile);
 
   CLI11_PARSE(app, argc, argv);
@@ -106,10 +115,12 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
   const bool simulation_given = (sim_instr_option->count() > 0) || (deprec_sim_instr_option->count() > 0);
 
   // init perfect components
-  champsim::perfect_bp = false;
-  champsim::perfect_L2C = false;
-  champsim::perfect_L1I = false;
-  champsim::perfect_L1D = false;
+  //champsim::perfect_bp = false;
+  //champsim::perfect_L2C = false;
+  //champsim::perfect_L1I = false;
+  //champsim::perfect_L1D = false;
+  //champsim::perfect_DTLB = false;
+  //champsim::perfect_LLC = false;
 
   if (deprec_warmup_instr_option->count() > 0) {
     fmt::print("WARNING: option --warmup_instructions is deprecated. Use --warmup-instructions instead.\n");

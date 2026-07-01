@@ -1,0 +1,106 @@
+{
+	"block_size": 64,
+	"page_size": 4096,
+	"heartbeat_frequency": 10000000,
+	"num_cores": 1,
+
+	"ooo_cpu": [
+		{
+			"frequency": 3200,
+			"ifetch_buffer_size": 150,
+			"decode_buffer_size": 75,
+			"dispatch_buffer_size": 144,
+			"register_file_size": 612,
+			"rob_size": 512,
+			"lq_size": 192,
+			"sq_size": 114,
+			"fetch_width": 10,
+			"decode_width": 6,
+			"dispatch_width": 6,
+			"scheduler_size": 205,
+			"execute_width": 10,
+			"lq_width": 3,
+			"sq_width": 2,
+			"retire_width": 8,
+			"mispredict_penalty": 3,
+			"decode_latency": 4,
+			"dispatch_latency": 2,
+			"schedule_latency": 5,
+			"execute_latency": 1,
+			"dib_set": 128,
+			"dib_way": 8,
+			"dib_window": 32,
+			"branch_predictor": "hp_new",
+			"btb": "basic_btb"
+		}
+	],
+
+	"L1I": {
+		"sets_factor": 64,
+		"ways": 8,
+		"max_fill": 4,
+		"max_tag_check": 8
+	},
+
+	"L1D": {
+		"sets": 64,
+		"ways": 12,
+		"mshr_size": 16,
+		"hit_latency": 5,
+		"fill_latency": 1,
+		"max_fill": 1,
+		"max_tag_check": 30
+	},
+
+	"L2C": {
+		"sets": 2048,
+		"ways": 10,
+		"hit_latency": 15,
+		"pq_size": 80,
+		"mshr_size": 48,
+		"fill_latency": 2,
+		"max_fill": 1,
+    "prefetcher": "spp_dev"
+	},
+
+	"LLC": {
+		"sets": 4096,
+		"ways": 12,
+		"hit_latency": 67
+	},
+
+	"physical_memory": {
+		"data_rate": 3200,
+		"channels": 1,
+        	"ranks": 1,
+        	"bankgroups": 8,
+        	"banks": 4,
+        	"bank_rows": 65536,
+        	"bank_columns": 1024,
+        	"channel_width": 8,
+        	"wq_size": 64,
+        	"rq_size": 64,
+        	"tCAS":  20,
+        	"tRCD": 20,
+        	"tRP": 20,
+        	"tRAS": 40,
+		"refresh_period": 64,
+		"refreshes_per_period": 8192
+	},
+
+	"ITLB": {
+		"sets": 32,
+		"ways": 8
+	},
+
+	"DTLB": {
+		"sets": 12,
+		"ways": 8,
+		"mshr_size": 10
+	},
+
+	"STLB": {
+		"sets": 256,
+		"ways": 8
+	}
+}
