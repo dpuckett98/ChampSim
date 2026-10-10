@@ -730,7 +730,7 @@ void O3_CPU::fill_from_sources()
 {
   for (auto* src : workload_source_pimpl) {
     for (auto space = instructions_requested(); !src->eof() && space > 0; --space) {
-      push_instruction(src->next_instruction(0xdeadbeef, false)); // TODO: Fix this
+      push_instruction(src->next_instr());
     }
   }
 }

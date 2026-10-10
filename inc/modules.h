@@ -1095,17 +1095,21 @@ struct module_base {
   struct workload_source : public module_base<workload_source, source_consumer> {
     virtual ~workload_source() = default;
 
+    virtual ooo_model_instr next_instr() = 0;
+    virtual void steer([[maybe_unused]] const bool taken = false, [[maybe_unused]] const uint64_t target = 0xdeadbeef) {}
+    virtual void flush() {}
+
     // Provide the next instruction. Called by the core when it has input queue space.
-    virtual ooo_model_instr next_instruction(const uint64_t next_pc = 0xdeadbeef, const bool resteer = false) = 0;
+    //virtual ooo_model_instr next_instruction(const uint64_t next_pc = 0xdeadbeef, const bool resteer = false) = 0;
 
     // True when the source has no more instructions to provide.
     [[nodiscard]] virtual bool eof() const = 0;
 
     // Execution-driven feedback hooks (no-ops by default).
     // Called by the core at the appropriate pipeline stage.
-    virtual void retire_instruction([[maybe_unused]] const ooo_model_instr& instr) {}
-    virtual void squash_instruction([[maybe_unused]] const ooo_model_instr& instr) {}
-    virtual void branch_mispredict([[maybe_unused]] const ooo_model_instr& instr) {}
+    //virtual void retire_instruction([[maybe_unused]] const ooo_model_instr& instr) {}
+    //virtual void squash_instruction([[maybe_unused]] const ooo_model_instr& instr) {}
+    //virtual void branch_mispredict([[maybe_unused]] const ooo_model_instr& instr) {}
   };
 
   /**

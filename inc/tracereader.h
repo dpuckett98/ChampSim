@@ -47,7 +47,10 @@ class tracereader
   static uint64_t instr_unique_id; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
   struct reader_concept {
     virtual ~reader_concept() = default;
-    virtual ooo_model_instr operator()(const uint64_t next_pc, const bool resteer) = 0;
+    virtual ooo_model_instr next_instr() = 0;
+    virtual void steer([[maybe_unused]] const bool taken = false, [[maybe_unused]] const uint64_t target = 0xdeadbeef) {}
+    virtual void flush() {}
+    //virtual ooo_model_instr operator()(const uint64_t next_pc, const bool resteer) = 0;
     [[nodiscard]] virtual bool eof() const = 0;
   };
 
@@ -59,13 +62,26 @@ class tracereader
     template <typename U>
     using has_eof = decltype(std::declval<U>().eof());
 
-    ooo_model_instr operator()(const uint64_t next_pc = 0xdeadbeef, const bool resteer = false) override
+    ooo_model_instr next_instr() {
+      return intern_.next_instr();
+    }
+
+    void steer(const bool taken = false, const uint64_t target = 0xdeadbeef) {
+      return intern_.steer(taken, target);
+    }
+
+    void flush() {
+      return intern_.flush();
+    }
+
+    /*ooo_model_instr operator()(const uint64_t next_pc = 0xdeadbeef, const bool resteer = false) override
     {
       if constexpr (supports_wrong_path<T>::value)
         return intern_(next_pc, resteer);
       else
         return intern_();
-    }
+    }*/
+
     [[nodiscard]] bool eof() const override
     {
       if constexpr (champsim::is_detected_v<has_eof, T>) {
@@ -83,11 +99,25 @@ public:
   {
   }
 
-  auto operator()(const uint64_t next_pc = 0xdeadbeef, const bool resteer = false)
+  /*auto operator()(const uint64_t next_pc = 0xdeadbeef, const bool resteer = false)
   {
     auto retval = (*pimpl_)(next_pc, resteer);
     retval.instr_id = instr_unique_id++;
     return retval;
+  }*/
+
+  ooo_model_instr next_instr() {
+    auto retval = (*pimpl_).next_instr();
+    retval.instr_id = instr_unique_id++;
+    return retval;
+  }
+
+  void steer(const bool taken = false, const uint64_t target = 0xdeadbeef) {
+    (*pimpl_).steer(taken, target);
+  }
+
+  void flush() {
+    (*pimpl_).flush();
   }
 
   [[nodiscard]] auto eof() const { return pimpl_->eof(); }
@@ -108,7 +138,10 @@ class bulk_tracereader
   std::deque<ooo_model_instr> instr_buffer;
 
 public:
-  ooo_model_instr operator()();
+  //ooo_model_instr operator()();
+  ooo_model_instr next_instr();
+  void steer([[maybe_unused]] bool taken, [[maybe_unused]] uint64_t target) {}
+  void flush() {}
 
   bulk_tracereader(uint8_t cpu_idx, std::string tf) : cpu(cpu_idx), trace_file(tf) {}
   bulk_tracereader(uint8_t cpu_idx, F&& file) : cpu(cpu_idx), trace_file(std::move(file)) {}
@@ -127,7 +160,7 @@ void set_branch_targets(It begin, It end)
 }
 
 template <typename T, typename F>
-ooo_model_instr bulk_tracereader<T, F>::operator()()
+ooo_model_instr bulk_tracereader<T, F>::next_instr()
 {
   if (std::size(instr_buffer) <= refresh_thresh) {
     std::array<T, buffer_size - refresh_thresh> trace_read_buf;

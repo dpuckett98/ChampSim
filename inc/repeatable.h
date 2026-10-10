@@ -34,7 +34,7 @@ struct repeatable {
   T intern_{std::apply([](auto... x) { return T{x...}; }, args_)};
   explicit repeatable(Args... args) : args_(args...) {}
 
-  auto operator()(const uint64_t next_pc = true, const bool resteer = false)
+  /*auto operator()(const uint64_t next_pc = true, const bool resteer = false)
   {
     // Reopen trace if we've reached the end of the file
     if (intern_.eof()) {
@@ -46,6 +46,24 @@ struct repeatable {
       return intern_(next_pc, resteer);
     else
       return intern_();
+  }*/
+
+  ooo_model_instr next_instr() {
+    // Reopen trace if we've reached the end of the file
+    if (intern_.eof()) {
+      fmt::print("*** Reached end of trace: {}\n", args_);
+      intern_ = T{std::apply([](auto... x) { return T{x...}; }, args_)};
+    }
+
+    return intern_.next_instr();
+  }
+
+  void steer(bool taken, uint64_t target) {
+    intern_.steer(taken, target);
+  }
+
+  void flush() {
+    intern_.flush();
   }
 
   [[nodiscard]] bool eof() const { return false; }
