@@ -710,7 +710,7 @@ class wrong_path_tracereader
   public:
     // new interface
     virtual std::optional<ooo_model_instr> next_instr() = 0;
-    virtual bool steer([[maybe_unused]] const bool taken = false, [[maybe_unused]] const uint64_t target = 0xdeadbeef) { return true; }
+    virtual bool steer([[maybe_unused]] const bool taken = false, [[maybe_unused]] const uint64_t target = 0xdeadbeef) { return false; }
     virtual void flush() {}
     //virtual ooo_model_instr read(const uint64_t next_pc = 0xdeadbeef, const bool resteer = false) = 0;
     virtual bool eof() const = 0;
@@ -724,10 +724,18 @@ class wrong_path_tracereader
     bool initialized = false; // Used for lazy initialization
     const bool wp_enabled = false;
 
-    std::optional<ooo_model_instr> last_cp_instr;
-    std::optional<ooo_model_instr> prev_instr;
-    bool steer_taken = false;
-    uint64_t steer_target = 0xdeadbeef;
+    //std::optional<ooo_model_instr> last_cp_instr;
+    //std::optional<ooo_model_instr> prev_instr;
+    //bool steer_taken = false;
+    //uint64_t steer_target = 0xdeadbeef;
+
+    bool on_wp = false;
+    bool prev_valid = false;
+    bool prev_branch_taken = false;
+    uint64_t prev_branch_target = 0xdeadbeef;
+    bool last_cp_valid = false;
+    bool last_cp_branch_taken = false;
+    uint64_t last_cp_branch_target = 0xdeadbeef;
 
     struct field_delta_section {
       uint64_t ipos;
@@ -1573,7 +1581,26 @@ class wrong_path_tracereader
     // if b, tkn, target don't match i, i.branch_mispredicted = true
     [[nodiscard]] constexpr std::optional<ooo_model_instr> next_instr() override
     {
-      bool to_cp = true;
+      if (!wp_enabled && on_wp) {
+        return std::nullopt;
+      }
+      std::optional<ooo_model_instr> next = read(!on_wp);
+      if (next.has_value()) {
+        prev_branch_taken = next->is_branch && next->branch_taken;
+	prev_branch_target = next->branch_target.to<uint64_t>();
+	prev_valid = true;
+	if (!on_wp) {
+          last_cp_branch_taken = prev_branch_taken;
+	  last_cp_branch_target = prev_branch_target;
+	  last_cp_valid = true;
+	}
+      } else {
+        prev_valid = false;
+      }
+      return next;
+
+
+      /*bool to_cp = true;
 
       if (!wp_enabled || !prev_instr.has_value()) {
 	to_cp = true;
@@ -1611,7 +1638,7 @@ class wrong_path_tracereader
         prev_instr = next; // copies full instr -- could optimize by only copying is_wp, is_branch, branch_taken, and branch_target 
       steer_taken = false;
       steer_target = 0xdeadbeef;
-      return next;
+      return next;*/
     }
 
     // prev_instr stores the last instr. returned by "next_instr()"
@@ -1619,22 +1646,43 @@ class wrong_path_tracereader
     // wp_enabled marks whether or not wp instrs. are enabled or disabled
     // Hard-to-handle state: steer to WP when prev_instr wasn't a branch (but should never get to that state??)
 
-    // compares taken and target to prev_instr's stats and updates steer accordingly
+    // compares taken and target to prev_instr's stats and updates steer accordingly; returns true is steer is a misprediction
     bool steer(const bool taken = false, const uint64_t target = 0xdeadbeef) override
     {
-      if (wp_enabled) {
-        steer_taken = taken;
-	steer_target = target;
+      if (!prev_valid) {
+	throw std::runtime_error(fmt::format("[ERROR] steering, but no previous valid instruction"));
       }
-      return true;
+      if (on_wp) {
+        throw std::runtime_error(fmt::format("[ERROR] core trying to steer while on WP"));
+      }
+      //if (wp_enabled) {
+	if (prev_branch_taken && !taken) {
+          on_wp = true;
+	  return true;
+	}
+	if (prev_branch_taken && prev_branch_target != target) {
+          on_wp = true;
+	  return true;
+	}
+      //}
+      return false;
     }
 
     // sets prev_instr to last_cp_instr
     void flush() override
     {
-      if (wp_enabled) {
-        prev_instr = last_cp_instr.value();
+      if (!on_wp) {
+        throw std::runtime_error(fmt::format("[ERROR] core trying to flush while on CP"));
       }
+      if (!last_cp_valid) {
+        throw std::runtime_error(fmt::format("[ERROR] no previous valid CP instr. but trying to flush"));
+      }
+      on_wp = false;
+      prev_branch_taken = last_cp_branch_taken;
+      prev_branch_target = last_cp_branch_target;
+      /*if (wp_enabled) {
+        prev_instr = last_cp_instr.value();
+      }*/
         // potential flush states:
 	// 1: previously WP, moving to CP (BTB prediction was wrong but BP prediction was right; detected branch/target was off in decode; detected BMP in execute)
 	//   Handled in this implementation
@@ -1663,7 +1711,7 @@ class wrong_path_tracereader
       // Flush the buffer if the core has diverged from the trace
       const bool exhausted_current_basic_block = (instr_buffer.size() == 0);
       if (!exhausted_current_basic_block) {
-        const bool diverged = prev_instr.has_value() && (!prev_instr->is_wp != from_cp);
+        const bool diverged = !on_wp != from_cp; //prev_instr.has_value() && (!prev_instr->is_wp != from_cp);
         //const bool diverged = (next_pc != instr_buffer.front().ip.to<uint64_t>()) or resteer; // TODO: update this line
         if (diverged and wp_enabled) { // Drop the instructions in the buffer
           instr_buffer.clear();

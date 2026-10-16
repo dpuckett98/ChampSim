@@ -167,7 +167,8 @@ void O3_CPU::direct_fdip()
         if (arch_instr->branch_taken)
 	  taken_branch_bw.consume(); // if we're on the correct path still, then consume taken_branch_bw if this instr. is taken
       } else {
-        // if we're on the wrong path, then only consume taken_branch_bw if the WP trace predicts this branch taken
+        // if we're on the wrong path, then only consume taken_branch_bw if the WP trace predicts this branch taken;
+	// may not be able to use info from the instr. because the instr. may be pointing to the CP taken/target rather than what the WP does
 	fdip_peeked_instr = workload_source_pimpl[0]->next_instr();
 	if (fdip_peeked_instr.has_value()) {
           // if the next instr is NOT right after arch_instr, then the WP trace assumed the branch was taken and we should consume taken_branch_bw
@@ -245,16 +246,17 @@ void O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
         fmt::print("[BRANCH] instr_id: {} ip: {} taken: {}\n", arch_instr.instr_id, arch_instr.ip, arch_instr.branch_taken);
       }
 
-      fmt::print("Predicting branch ip: {}, taken: {}, target: {} predicted taken: {}, predicted target: {}\n", arch_instr.ip, arch_instr.branch_taken, arch_instr.branch_target, arch_instr.branch_prediction, predicted_branch_target.to<uint64_t>());
+      fmt::print("Predicting branch ip: {}, taken: {}, target: {} predicted taken: {}, predicted target: {}\n", arch_instr.ip, arch_instr.branch_taken, arch_instr.branch_target, arch_instr.branch_prediction, predicted_branch_target);
 
-      workload_source_pimpl[0]->steer(arch_instr.branch_prediction, predicted_branch_target.to<uint64_t>()); // for now, assuming that BTB perfectly identifies when instrs. are branches
+      bool mispredicted = workload_source_pimpl[0]->steer(arch_instr.branch_prediction, predicted_branch_target.to<uint64_t>()); // for now, assuming that BTB perfectly identifies when instrs. are branches
 
       // call code prefetcher every time the branch predictor is used
       l1i->impl_prefetcher_branch_operate(arch_instr.ip, arch_instr.branch, predicted_branch_target); // TODO: move this outside so it's not CP-only
 
-      if (predicted_branch_target != arch_instr.branch_target
-          || (((arch_instr.branch == BRANCH_CONDITIONAL) || (arch_instr.branch == BRANCH_OTHER))
-              && arch_instr.branch_taken != arch_instr.branch_prediction)) { // conditional branches are re-evaluated at decode when the target is computed
+      if (mispredicted) {
+      //if (predicted_branch_target != arch_instr.branch_target
+      //    || (((arch_instr.branch == BRANCH_CONDITIONAL) || (arch_instr.branch == BRANCH_OTHER))
+      //        && arch_instr.branch_taken != arch_instr.branch_prediction)) { // conditional branches are re-evaluated at decode when the target is computed
         sim_stats.total_rob_occupancy_at_branch_mispredict += std::size(ROB);
         sim_stats.branch_type_misses.increment(arch_instr.branch);
         arch_instr.branch_mispredicted = true;
@@ -474,6 +476,8 @@ long O3_CPU::decode_instruction()
         db_entry.branch_mispredicted = 0;
         // pay misprediction penalty
         this->fetch_resume_time = this->current_time + BRANCH_MISPREDICT_PENALTY;
+	workload_source_pimpl[0]->flush();
+	on_WP = false;
       }
     }
     // Add to dispatch
@@ -740,6 +744,8 @@ void O3_CPU::do_complete_execution(ooo_model_instr& instr)
 
   if (instr.branch_mispredicted) {
     fetch_resume_time = current_time + BRANCH_MISPREDICT_PENALTY;
+    workload_source_pimpl[0]->flush();
+    on_WP = false;
   }
 }
 
