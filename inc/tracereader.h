@@ -23,6 +23,7 @@
 #include <numeric>
 #include <string>
 #include <type_traits>
+#include <optional>
 
 #include "instruction.h"
 #include "util/detect.h"
@@ -47,8 +48,8 @@ class tracereader
   static uint64_t instr_unique_id; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
   struct reader_concept {
     virtual ~reader_concept() = default;
-    virtual ooo_model_instr next_instr() = 0;
-    virtual void steer([[maybe_unused]] const bool taken = false, [[maybe_unused]] const uint64_t target = 0xdeadbeef) {}
+    virtual std::optional<ooo_model_instr> next_instr() = 0;
+    virtual bool steer([[maybe_unused]] const bool taken = false, [[maybe_unused]] const uint64_t target = 0xdeadbeef) { return false; }
     virtual void flush() {}
     //virtual ooo_model_instr operator()(const uint64_t next_pc, const bool resteer) = 0;
     [[nodiscard]] virtual bool eof() const = 0;
@@ -62,11 +63,11 @@ class tracereader
     template <typename U>
     using has_eof = decltype(std::declval<U>().eof());
 
-    ooo_model_instr next_instr() {
+    std::optional<ooo_model_instr> next_instr() {
       return intern_.next_instr();
     }
 
-    void steer(const bool taken = false, const uint64_t target = 0xdeadbeef) {
+    bool steer(const bool taken = false, const uint64_t target = 0xdeadbeef) {
       return intern_.steer(taken, target);
     }
 
@@ -106,14 +107,14 @@ public:
     return retval;
   }*/
 
-  ooo_model_instr next_instr() {
+  std::optional<ooo_model_instr> next_instr() {
     auto retval = (*pimpl_).next_instr();
-    retval.instr_id = instr_unique_id++;
+    retval->instr_id = instr_unique_id++;
     return retval;
   }
 
-  void steer(const bool taken = false, const uint64_t target = 0xdeadbeef) {
-    (*pimpl_).steer(taken, target);
+  bool steer(const bool taken = false, const uint64_t target = 0xdeadbeef) {
+    return (*pimpl_).steer(taken, target);
   }
 
   void flush() {
@@ -139,8 +140,8 @@ class bulk_tracereader
 
 public:
   //ooo_model_instr operator()();
-  ooo_model_instr next_instr();
-  void steer([[maybe_unused]] bool taken, [[maybe_unused]] uint64_t target) {}
+  std::optional<ooo_model_instr> next_instr();
+  bool steer([[maybe_unused]] bool taken, [[maybe_unused]] uint64_t target) { return false; }
   void flush() {}
 
   bulk_tracereader(uint8_t cpu_idx, std::string tf) : cpu(cpu_idx), trace_file(tf) {}
@@ -160,7 +161,7 @@ void set_branch_targets(It begin, It end)
 }
 
 template <typename T, typename F>
-ooo_model_instr bulk_tracereader<T, F>::next_instr()
+std::optional<ooo_model_instr> bulk_tracereader<T, F>::next_instr()
 {
   if (std::size(instr_buffer) <= refresh_thresh) {
     std::array<T, buffer_size - refresh_thresh> trace_read_buf;

@@ -47,8 +47,10 @@ long O3_CPU::operate()
 
   progress += fetch_instruction(); // fetch
   progress += check_dib();
-  fill_from_sources();
-  initialize_instruction();
+  
+  direct_fdip();
+  //fill_from_sources();
+  //initialize_instruction();
 
   return progress;
 }
@@ -87,25 +89,6 @@ void O3_CPU::end_phase()
   roi_stats = sim_stats;
 }
 
-void O3_CPU::initialize_instruction()
-{
-  champsim::bandwidth instrs_to_read_this_cycle{
-      std::min(FETCH_WIDTH, champsim::bandwidth::maximum_type{static_cast<long>(IFETCH_BUFFER_SIZE - std::size(IFETCH_BUFFER))})};
-
-  bool stop_fetch = false;
-  while (current_time >= fetch_resume_time && instrs_to_read_this_cycle.has_remaining() && !stop_fetch && !std::empty(input_queue)) {
-    instrs_to_read_this_cycle.consume();
-
-    stop_fetch = do_init_instruction(input_queue.front());
-
-    // Add to IFETCH_BUFFER
-    IFETCH_BUFFER.push_back(input_queue.front());
-    input_queue.pop_front();
-
-    IFETCH_BUFFER.back().ready_time = current_time;
-  }
-}
-
 namespace
 {
 void do_stack_pointer_folding(ooo_model_instr& arch_instr)
@@ -129,45 +112,167 @@ void do_stack_pointer_folding(ooo_model_instr& arch_instr)
 }
 } // namespace
 
-bool O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
+// Possible states:
+// 1. On CP
+// 2. On WP & haven't run out of WP instrs. from trace (fetch_resume_time <= current_time)
+// 3. On WP & have run out of WP instrs. from trace (fetch_resume_time > current_time)
+void O3_CPU::direct_fdip()
 {
+  // bandwidths: max # instrs, max # branches, max # taken branches
+  champsim::bandwidth instrs_bw{
+	  std::min(FDIP_INSTR_WIDTH, champsim::bandwidth::maximum_type{static_cast<long>(IFETCH_BUFFER_SIZE - std::size(IFETCH_BUFFER))})};
+  champsim::bandwidth branch_bw{FDIP_BRANCH_WIDTH};
+  champsim::bandwidth taken_branch_bw{FDIP_TAKEN_BRANCH_WIDTH};
+
   bool stop_fetch = false;
 
-  // handle branch prediction for all instructions as at this point we do not know if the instruction is a branch
-  sim_stats.total_branch_types.increment(arch_instr.branch);
-  auto [predicted_branch_target, always_taken] = impl_btb_prediction(arch_instr.ip, arch_instr.branch);
-  arch_instr.branch_prediction = impl_predict_branch(arch_instr.ip, predicted_branch_target, always_taken, arch_instr.branch) || always_taken;
-  if (!arch_instr.branch_prediction) {
-    predicted_branch_target = champsim::address{};
-  }
+  // while bandwidth available & fetch isn't stopped (fetch stopped when the trace runs out of WP instrs.)
+  while (current_time >= fetch_resume_time && !stop_fetch && instrs_bw.has_remaining() && branch_bw.has_remaining() && taken_branch_bw.has_remaining()) {
+    // get next instr; this is either the instr we peeked at last time or the next instr from the workload source
+    auto arch_instr = fdip_peeked_instr;
+    if (!arch_instr.has_value())
+      arch_instr = workload_source_pimpl[0]->next_instr();
+    else
+      fdip_peeked_instr.reset();
 
-  if (arch_instr.is_branch) {
-    if constexpr (champsim::debug_print) {
-      fmt::print("[BRANCH] instr_id: {} ip: {} taken: {}\n", arch_instr.instr_id, arch_instr.ip, arch_instr.branch_taken);
+    // if arch_instr doesn't have a value, then we've run out of WP instrs.; halt fetch until branch misprediction is resolved
+    if (!arch_instr.has_value()) {
+      stop_fetch = true;
+      fetch_resume_time = champsim::chrono::clock::time_point::max();
+      fmt::print("Halting fetch because we don't have WP instrs.\n");
+      break;
     }
 
-    // call code prefetcher every time the branch predictor is used
-    l1i->impl_prefetcher_branch_operate(arch_instr.ip, arch_instr.branch, predicted_branch_target);
+    fmt::print("Cycle: {}, IP: {}, on WP: {}\n", current_time.time_since_epoch() / clock_period, arch_instr->ip, on_WP);
 
-    if (predicted_branch_target != arch_instr.branch_target
-        || (((arch_instr.branch == BRANCH_CONDITIONAL) || (arch_instr.branch == BRANCH_OTHER))
-            && arch_instr.branch_taken != arch_instr.branch_prediction)) { // conditional branches are re-evaluated at decode when the target is computed
-      sim_stats.total_rob_occupancy_at_branch_mispredict += std::size(ROB);
-      sim_stats.branch_type_misses.increment(arch_instr.branch);
-      if (!is_warmup()) {
-        fetch_resume_time = champsim::chrono::clock::time_point::max();
-        stop_fetch = true;
-        arch_instr.branch_mispredicted = true;
+    // fast warmup eliminates register dependencies between instructions branch predictor, cache contents, and prefetchers are still warmed up
+    if (is_warmup()) {
+      arch_instr->source_registers.clear();
+      arch_instr->destination_registers.clear();
+    }
+    
+    do_stack_pointer_folding(arch_instr.value());
+
+    // branch prediction to setup for next instr.
+    do_predict_branch(arch_instr.value());
+
+    IFETCH_BUFFER.push_back(arch_instr.value());
+    IFETCH_BUFFER.back().ready_time = current_time; // TODO: add a branch prediction latency???
+
+    // consume BW
+    instrs_bw.consume();
+    if (arch_instr->is_branch) { // we assume processor perfectly knows if instr. is a branch or not
+      branch_bw.consume();
+      if (!on_WP) {
+        if (arch_instr->branch_taken)
+	  taken_branch_bw.consume(); // if we're on the correct path still, then consume taken_branch_bw if this instr. is taken
+      } else {
+        // if we're on the wrong path, then only consume taken_branch_bw if the WP trace predicts this branch taken
+	fdip_peeked_instr = workload_source_pimpl[0]->next_instr();
+	if (fdip_peeked_instr.has_value()) {
+          // if the next instr is NOT right after arch_instr, then the WP trace assumed the branch was taken and we should consume taken_branch_bw
+          if (fdip_peeked_instr->ip.to<uint64_t>() != arch_instr->ip.to<uint64_t>() + arch_instr->instr_size) {
+            taken_branch_bw.consume();
+	  }
+	} else {
+          // if there wasn't another instr. along the WP trace, then stop fetch until branch misprediction is resolved
+	  stop_fetch = true;
+	  fetch_resume_time = champsim::chrono::clock::time_point::max();
+	  fmt::print("Halting fetch because we don't have WP instrs (after peeking next instr.).\n");
+	}
       }
-    } else {
-      stop_fetch = arch_instr.branch_taken; // if correctly predicted taken, then we can't fetch anymore instructions this cycle
+    }
+  }
+}
+
+void O3_CPU::initialize_instruction()
+{
+  champsim::bandwidth instrs_to_read_this_cycle{
+      std::min(FETCH_WIDTH, champsim::bandwidth::maximum_type{static_cast<long>(IFETCH_BUFFER_SIZE - std::size(IFETCH_BUFFER))})};
+
+  bool stop_fetch = false;
+  while (current_time >= fetch_resume_time && instrs_to_read_this_cycle.has_remaining() && !stop_fetch && !std::empty(input_queue)) {
+    instrs_to_read_this_cycle.consume();
+
+    stop_fetch = do_init_instruction(input_queue.front());
+
+    // Add to IFETCH_BUFFER
+    IFETCH_BUFFER.push_back(input_queue.front());
+    input_queue.pop_front();
+
+    IFETCH_BUFFER.back().ready_time = current_time;
+  }
+}
+
+/*namespace
+{
+void do_stack_pointer_folding(ooo_model_instr& arch_instr)
+{
+  // The exact, true value of the stack pointer for any given instruction can usually be determined immediately after the instruction is decoded without
+  // waiting for the stack pointer's dependency chain to be resolved.
+  bool writes_sp = (std::count(std::begin(arch_instr.destination_registers), std::end(arch_instr.destination_registers), champsim::REG_STACK_POINTER) > 0);
+  if (writes_sp) {
+    // Avoid creating register dependencies on the stack pointer for calls, returns, pushes, and pops, but not for variable-sized changes in the
+    // stack pointer position. reads_other indicates that the stack pointer is being changed by a variable amount, which can't be determined before
+    // execution.
+    bool reads_other =
+        (std::count_if(std::begin(arch_instr.source_registers), std::end(arch_instr.source_registers),
+                       [](auto r) { return r != champsim::REG_STACK_POINTER && r != champsim::REG_FLAGS && r != champsim::REG_INSTRUCTION_POINTER; })
+         > 0);
+    if ((arch_instr.is_branch) || !(std::empty(arch_instr.destination_memory) && std::empty(arch_instr.source_memory)) || (!reads_other)) {
+      auto nonsp_end = std::remove(std::begin(arch_instr.destination_registers), std::end(arch_instr.destination_registers), champsim::REG_STACK_POINTER);
+      arch_instr.destination_registers.erase(nonsp_end, std::end(arch_instr.destination_registers));
+    }
+  }
+}
+} // namespace*/
+
+void O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
+{
+  if (on_WP) {
+    // TODO: count WP stats
+  } else {
+    // handle branch prediction for all instructions as at this point we do not know if the instruction is a branch
+    sim_stats.total_branch_types.increment(arch_instr.branch);
+    auto [predicted_branch_target, always_taken] = impl_btb_prediction(arch_instr.ip, arch_instr.branch);
+    arch_instr.branch_prediction = impl_predict_branch(arch_instr.ip, predicted_branch_target, always_taken, arch_instr.branch) || always_taken;
+    if (!arch_instr.branch_prediction) {
+      predicted_branch_target = champsim::address{};
     }
 
-    impl_update_btb(arch_instr.ip, arch_instr.branch_target, arch_instr.branch_taken, arch_instr.branch);
-    impl_last_branch_result(arch_instr.ip, arch_instr.branch_target, arch_instr.branch_taken, arch_instr.branch);
-  }
+    if (arch_instr.is_branch) {
+      if constexpr (champsim::debug_print) {
+        fmt::print("[BRANCH] instr_id: {} ip: {} taken: {}\n", arch_instr.instr_id, arch_instr.ip, arch_instr.branch_taken);
+      }
 
-  return stop_fetch;
+      fmt::print("Predicting branch ip: {}, taken: {}, target: {} predicted taken: {}, predicted target: {}\n", arch_instr.ip, arch_instr.branch_taken, arch_instr.branch_target, arch_instr.branch_prediction, predicted_branch_target.to<uint64_t>());
+
+      workload_source_pimpl[0]->steer(arch_instr.branch_prediction, predicted_branch_target.to<uint64_t>()); // for now, assuming that BTB perfectly identifies when instrs. are branches
+
+      // call code prefetcher every time the branch predictor is used
+      l1i->impl_prefetcher_branch_operate(arch_instr.ip, arch_instr.branch, predicted_branch_target); // TODO: move this outside so it's not CP-only
+
+      if (predicted_branch_target != arch_instr.branch_target
+          || (((arch_instr.branch == BRANCH_CONDITIONAL) || (arch_instr.branch == BRANCH_OTHER))
+              && arch_instr.branch_taken != arch_instr.branch_prediction)) { // conditional branches are re-evaluated at decode when the target is computed
+        sim_stats.total_rob_occupancy_at_branch_mispredict += std::size(ROB);
+        sim_stats.branch_type_misses.increment(arch_instr.branch);
+        arch_instr.branch_mispredicted = true;
+	on_WP = true; // TODO: this assumes that the trace will output WP instrs; currently lacking support for trace only passing CP instrs
+	fmt::print("Switching to WP at instr IP {}!\n", arch_instr.ip);
+	/*if (!is_warmup()) {
+          fetch_resume_time = champsim::chrono::clock::time_point::max();
+          stop_fetch = true;
+          arch_instr.branch_mispredicted = true;
+        }*/
+      } /*else {
+        stop_fetch = arch_instr.branch_taken; // if correctly predicted taken, then we can't fetch anymore instructions this cycle
+      }*/
+
+      impl_update_btb(arch_instr.ip, arch_instr.branch_target, arch_instr.branch_taken, arch_instr.branch);
+      impl_last_branch_result(arch_instr.ip, arch_instr.branch_target, arch_instr.branch_taken, arch_instr.branch);
+    }
+  }
 }
 
 void O3_CPU::push_instruction(ooo_model_instr instr)
@@ -189,7 +294,8 @@ bool O3_CPU::do_init_instruction(ooo_model_instr& arch_instr)
   }
 
   ::do_stack_pointer_folding(arch_instr);
-  return do_predict_branch(arch_instr);
+  //return do_predict_branch(arch_instr);
+  return false;
 }
 
 long O3_CPU::check_dib()
@@ -730,7 +836,7 @@ void O3_CPU::fill_from_sources()
 {
   for (auto* src : workload_source_pimpl) {
     for (auto space = instructions_requested(); !src->eof() && space > 0; --space) {
-      push_instruction(src->next_instr());
+      push_instruction(src->next_instr().value()); // fails if next_instr() returns no value
     }
   }
 }

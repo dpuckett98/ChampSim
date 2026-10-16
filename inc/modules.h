@@ -1095,8 +1095,8 @@ struct module_base {
   struct workload_source : public module_base<workload_source, source_consumer> {
     virtual ~workload_source() = default;
 
-    virtual ooo_model_instr next_instr() = 0;
-    virtual void steer([[maybe_unused]] const bool taken = false, [[maybe_unused]] const uint64_t target = 0xdeadbeef) {}
+    virtual std::optional<ooo_model_instr> next_instr() = 0;
+    virtual bool steer([[maybe_unused]] const bool taken = false, [[maybe_unused]] const uint64_t target = 0xdeadbeef) { return false; }
     virtual void flush() {}
 
     // Provide the next instruction. Called by the core when it has input queue space.

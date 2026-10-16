@@ -48,7 +48,7 @@ struct repeatable {
       return intern_();
   }*/
 
-  ooo_model_instr next_instr() {
+  std::optional<ooo_model_instr> next_instr() {
     // Reopen trace if we've reached the end of the file
     if (intern_.eof()) {
       fmt::print("*** Reached end of trace: {}\n", args_);
@@ -58,8 +58,8 @@ struct repeatable {
     return intern_.next_instr();
   }
 
-  void steer(bool taken, uint64_t target) {
-    intern_.steer(taken, target);
+  bool steer(bool taken, uint64_t target) {
+    return intern_.steer(taken, target);
   }
 
   void flush() {

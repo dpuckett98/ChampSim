@@ -205,10 +205,10 @@ private:
 public:
   ooo_model_instr(uint8_t cpu, input_instr instr) : ooo_model_instr(instr, {cpu, cpu}) {}
   ooo_model_instr(uint8_t /*cpu*/, cloudsuite_instr instr) : ooo_model_instr(instr, {instr.asid[0], instr.asid[1]}) {}
-  ooo_model_instr(const uint64_t ip_, const uint8_t instr_size_, const bool is_branch_, const bool branch_taken_, const uint8_t cpu, const branch_type br_type,
+  ooo_model_instr(const uint64_t ip_, const uint8_t instr_size_, const bool is_branch_, const bool branch_taken_, const champsim::address branch_target_, const uint8_t cpu, const branch_type br_type,
                   const std::vector<uint8_t>& dst_reg, const std::vector<uint8_t>& src_reg, const std::vector<uint64_t>& dst_mem,
                   const std::vector<uint64_t>& src_mem)
-      : ip(ip_), instr_size(instr_size_), is_branch(is_branch_), branch_taken(branch_taken_), asid({cpu, cpu}), branch(br_type)
+      : ip(ip_), instr_size(instr_size_), is_branch(is_branch_), branch_taken(branch_taken_), branch_target(branch_target_), asid({cpu, cpu}), branch(br_type)
   {
     std::transform(std::begin(dst_reg), std::end(dst_reg), std::back_inserter(this->destination_registers),
                    detail::type_caster<uint64_t, PHYSICAL_REGISTER_ID>);

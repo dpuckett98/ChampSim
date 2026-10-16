@@ -130,6 +130,7 @@ public:
   champsim::chrono::clock::duration SCHEDULING_LATENCY;
   champsim::chrono::clock::duration EXEC_LATENCY;
   champsim::chrono::clock::duration DIB_HIT_LATENCY;
+  champsim::bandwidth::maximum_type FDIP_INSTR_WIDTH, FDIP_BRANCH_WIDTH, FDIP_TAKEN_BRANCH_WIDTH;
 
   champsim::bandwidth::maximum_type L1I_BANDWIDTH, L1D_BANDWIDTH;
 
@@ -137,6 +138,8 @@ public:
 
   // branch
   champsim::chrono::clock::time_point fetch_resume_time{};
+  bool on_WP = false;
+  std::optional<ooo_model_instr> fdip_peeked_instr;
 
   const long IN_QUEUE_SIZE;
   std::deque<ooo_model_instr> input_queue;
@@ -163,6 +166,7 @@ public:
   void push_instruction(ooo_model_instr instr) final;
   std::size_t instructions_requested() final;
   void initialize_instruction();
+  void direct_fdip();
   long check_dib();
   long fetch_instruction();
   long promote_to_decode();
@@ -176,7 +180,7 @@ public:
   long retire_rob();
 
   bool do_init_instruction(ooo_model_instr& instr);
-  bool do_predict_branch(ooo_model_instr& instr);
+  void do_predict_branch(ooo_model_instr& instr);
   void do_check_dib(ooo_model_instr& instr);
   bool do_fetch_instruction(std::deque<ooo_model_instr>::iterator begin, std::deque<ooo_model_instr>::iterator end);
   void do_dib_update(const ooo_model_instr& instr);
@@ -232,7 +236,9 @@ public:
         DECODE_LATENCY(builder.get_parameter<unsigned>("decode_latency") * builder.get_parameter<champsim::chrono::picoseconds>("clock_period")), SCHEDULING_LATENCY(builder.get_parameter<unsigned>("schedule_latency") * builder.get_parameter<champsim::chrono::picoseconds>("clock_period")),
         EXEC_LATENCY(builder.get_parameter<unsigned>("execute_latency") * builder.get_parameter<champsim::chrono::picoseconds>("clock_period")), DIB_HIT_LATENCY(builder.get_parameter<unsigned>("dib_hit_latency") * builder.get_parameter<champsim::chrono::picoseconds>("clock_period")), L1I_BANDWIDTH(builder.get_parameter<champsim::bandwidth::maximum_type>("l1i_bandwidth")),
         L1D_BANDWIDTH(builder.get_parameter<champsim::bandwidth::maximum_type>("l1d_bandwidth")), IN_QUEUE_SIZE(2 * champsim::to_underlying(builder.get_parameter<champsim::bandwidth::maximum_type>("fetch_width"))), L1I_bus(builder.get_parameter<uint8_t>("cpu"), builder.get_parameter<champsim::modules::channel_module*>("fetch_queues")),
-        L1D_bus(builder.get_parameter<uint8_t>("cpu"), builder.get_parameter<champsim::modules::channel_module*>("data_queues")), l1i(builder.get_parameter<champsim::modules::cache_module*>("l1i"))
+        L1D_bus(builder.get_parameter<uint8_t>("cpu"), builder.get_parameter<champsim::modules::channel_module*>("data_queues")), l1i(builder.get_parameter<champsim::modules::cache_module*>("l1i")),
+	FDIP_INSTR_WIDTH(builder.get_parameter<champsim::bandwidth::maximum_type>("fdip_instr_width")), FDIP_BRANCH_WIDTH(builder.get_parameter<champsim::bandwidth::maximum_type>("fdip_branch_width")),
+	FDIP_TAKEN_BRANCH_WIDTH(builder.get_parameter<champsim::bandwidth::maximum_type>("fdip_taken_branch_width"))
   {
     // Construct branch predictor submodules
     for (const auto& sub : builder.get_submodules("branch_predictor"))

@@ -709,8 +709,8 @@ class wrong_path_tracereader
   {
   public:
     // new interface
-    virtual ooo_model_instr next_instr() = 0;
-    virtual void steer([[maybe_unused]] const bool taken = false, [[maybe_unused]] const uint64_t target = 0xdeadbeef) {}
+    virtual std::optional<ooo_model_instr> next_instr() = 0;
+    virtual bool steer([[maybe_unused]] const bool taken = false, [[maybe_unused]] const uint64_t target = 0xdeadbeef) { return true; }
     virtual void flush() {}
     //virtual ooo_model_instr read(const uint64_t next_pc = 0xdeadbeef, const bool resteer = false) = 0;
     virtual bool eof() const = 0;
@@ -1029,7 +1029,7 @@ class wrong_path_tracereader
         fmt::print(stderr, "[INFO] {:x}: is_branch = {}, next_pc = {:x}\n", instruction_pc, is_branch, next_pc);
 
       // Construct an ooo_model_instr and return
-      return ooo_model_instr(instruction_pc, instr_size, is_branch, branch_taken, cpu, br_type, instruction_template.dst_regs, instruction_template.src_regs,
+      return ooo_model_instr(instruction_pc, instr_size, is_branch, branch_taken, champsim::address{branch_target}, cpu, br_type, instruction_template.dst_regs, instruction_template.src_regs,
                              dst_mem, src_mem);
     }
 
@@ -1053,9 +1053,10 @@ class wrong_path_tracereader
     // This function is only called when there are no more wrong path instructions left to be generated but a re-steer hasn't been observed yet
     // Generates trace inferred wrong path instructions starting from next_bb_pc
     template <std::size_t N = 128>
-    [[nodiscard]] constexpr std::vector<ooo_model_instr> continue_wp() const
+    [[nodiscard]] constexpr std::optional<std::vector<ooo_model_instr>> continue_wp() const
     {
-      fmt::print(stderr, "[INFO] Starting trace inferred WP from PC = ?\n");
+      fmt::print(stderr, "[INFO] Ran out of WP instrs\n");
+      return std::nullopt;
 
       std::vector<ooo_model_instr> retvec;
       retvec.reserve(N);
@@ -1141,7 +1142,7 @@ class wrong_path_tracereader
       return retvec;
     }
 
-    [[nodiscard]] constexpr std::vector<ooo_model_instr> start_wp(const body_entry& entry)
+    [[nodiscard]] constexpr std::optional<std::vector<ooo_model_instr>> start_wp(const body_entry& entry)
     {
       fmt::print(stderr, "[INFO] Starting wrong path from template {}\n", entry.template_id);
 
@@ -1189,7 +1190,7 @@ class wrong_path_tracereader
     }
 
     // Applies the deltas to the overlays and constructs a vector of ooo_model_instr from a single body entry
-    [[nodiscard]] constexpr std::vector<ooo_model_instr> construct_instructions(const body_entry& entry, const bool from_cp = true)
+    [[nodiscard]] constexpr std::optional<std::vector<ooo_model_instr>> construct_instructions(const body_entry& entry, const bool from_cp = true)
     {
       if (header.templates.find(entry.template_id) == header.templates.end())
         throw std::runtime_error(fmt::format("[ERROR] Unknown template ID {} found", entry.template_id));
@@ -1502,7 +1503,7 @@ class wrong_path_tracereader
     // Expects that the stream pointer points to the next BODY_TAG_ENTRY
     // Returns a vector of *all* the instructions generated from the basic block template in BODY_TAG_ENTRY
     // This function should *never* be called on correct path to generate instructions from the middle of basic block
-    [[nodiscard]] constexpr std::vector<ooo_model_instr> get_next_instrs(const bool from_cp = true)
+    [[nodiscard]] constexpr std::optional<std::vector<ooo_model_instr>> get_next_instrs(const bool from_cp = true)
     {
       const bool now_on_cp = from_cp;
       const bool was_on_cp = (!wp_state.has_value());
@@ -1513,7 +1514,7 @@ class wrong_path_tracereader
       const bool wp_disabled = (!wp_enabled);
       const bool fetch_from_cp = wp_disabled or first_entry or cp_to_cp or wp_to_cp;
 
-      std::vector<ooo_model_instr> retvec;
+      std::optional<std::vector<ooo_model_instr>> retvec;
       if (fetch_from_cp) { // Fetch from the correct path
         last_body_entry.emplace(handle_entry());
         retvec = construct_instructions(last_body_entry.value(), from_cp);
@@ -1570,7 +1571,7 @@ class wrong_path_tracereader
     // if b:
     //   steer(tkn, target)
     // if b, tkn, target don't match i, i.branch_mispredicted = true
-    [[nodiscard]] constexpr ooo_model_instr next_instr() override
+    [[nodiscard]] constexpr std::optional<ooo_model_instr> next_instr() override
     {
       bool to_cp = true;
 
@@ -1599,14 +1600,15 @@ class wrong_path_tracereader
 	}
       }
 
-      ooo_model_instr next = read(to_cp);
+      std::optional<ooo_model_instr> next = read(to_cp);
 
-      if (next.is_wp && !prev_instr->is_wp) {
+      if (next.has_value() && next->is_wp && !prev_instr->is_wp) {
 	if (!prev_instr.has_value())
 	  throw std::runtime_error(fmt::format("[ERROR] next instr is wrong path, but prev_instr is empty"));
         last_cp_instr = prev_instr.value(); // copies full instr
       }
-      prev_instr = next; // copies full instr -- could optimize by only copying is_wp, is_branch, branch_taken, and branch_target 
+      if (next.has_value())
+        prev_instr = next; // copies full instr -- could optimize by only copying is_wp, is_branch, branch_taken, and branch_target 
       steer_taken = false;
       steer_target = 0xdeadbeef;
       return next;
@@ -1618,12 +1620,13 @@ class wrong_path_tracereader
     // Hard-to-handle state: steer to WP when prev_instr wasn't a branch (but should never get to that state??)
 
     // compares taken and target to prev_instr's stats and updates steer accordingly
-    void steer(const bool taken = false, const uint64_t target = 0xdeadbeef) override
+    bool steer(const bool taken = false, const uint64_t target = 0xdeadbeef) override
     {
       if (wp_enabled) {
         steer_taken = taken;
 	steer_target = target;
       }
+      return true;
     }
 
     // sets prev_instr to last_cp_instr
@@ -1641,7 +1644,7 @@ class wrong_path_tracereader
 	//   Requires storing old body entries... skipping for now; thus, only one predictor, not two
     }
 
-    [[nodiscard]] constexpr ooo_model_instr read(const bool from_cp = true)
+    [[nodiscard]] constexpr std::optional<ooo_model_instr> read(const bool from_cp = true)
     {
       // Lazy initialization
       if (!initialized)
@@ -1672,9 +1675,11 @@ class wrong_path_tracereader
       // path instructions are needed
       if ((instr_buffer.size() == 0)) {
         const auto instrs = get_next_instrs(from_cp);
-        if (instrs.size() == 0)
+	if (!instrs.has_value())
+	  return std::nullopt;
+        if (instrs->size() == 0)
           throw std::runtime_error("[ERROR] Could not generate instructions");
-        instr_buffer.insert(std::end(instr_buffer), std::make_move_iterator(std::begin(instrs)), std::make_move_iterator(std::end(instrs)));
+        instr_buffer.insert(std::end(instr_buffer), std::make_move_iterator(std::begin(*instrs)), std::make_move_iterator(std::end(*instrs)));
       }
 
       // Return the next instruction
@@ -1727,20 +1732,24 @@ public:
     return instr;
   }*/
 
-  ooo_model_instr next_instr() {
+  std::optional<ooo_model_instr> next_instr() {
     if (!parsed_header)
       parse_trace();
 
-    const ooo_model_instr& instr = body_stream->next_instr();
+    const auto instr = body_stream->next_instr();
 
-    fmt::print(stderr, "{:x}: branch = {}, taken = {}, dst regs = {}, src regs = {}\n", instr.ip.to<uint64_t>(), instr.is_branch, instr.branch_taken,
-               instr.destination_registers, instr.source_registers);
+    if (instr.has_value()) {
+      fmt::print(stderr, "{:x}: branch = {}, taken = {}, dst regs = {}, src regs = {}\n", instr->ip.to<uint64_t>(), instr->is_branch, instr->branch_taken,
+               instr->destination_registers, instr->source_registers);
+    } else {
+      fmt::print(stderr, "No instr. available\n");
+    }
 
     return instr;
   }
 
-  void steer([[maybe_unused]] const bool taken = false, [[maybe_unused]] const uint64_t target = 0xdeadbeef) {
-    body_stream->steer(taken, target);
+  bool steer([[maybe_unused]] const bool taken = false, [[maybe_unused]] const uint64_t target = 0xdeadbeef) {
+    return body_stream->steer(taken, target);
   }
 
   void flush() {
