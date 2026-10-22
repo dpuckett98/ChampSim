@@ -277,6 +277,22 @@ void O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
   }
 }
 
+void O3_CPU::do_flush(ooo_model_instr& mispredicted_branch)
+{
+  this->fetch_resume_time = this->current_time + BRANCH_MISPREDICT_PENALTY;
+  workload_source_pimpl[0]->flush();
+  on_WP = false;
+  fmt::print("[FLUSH] instr_id: {} ip: {} cycle: {}\n", mispredicted_branch.instr_id, mispredicted_branch.ip, current_time.time_since_epoch() / clock_period);
+
+  // flush instrs. from FE
+  // check_dib: nothing needed
+  // fetch_instruction: flush IFETCH_BUFFER; don't need to change handle_memory_return to ignore responses to fetched-then-flushed instructions; may need to change handle_memory_return to
+  // 	consume some sort of BW on a per-response basis, because current version will consume 0 bandwidth whenever a response is ignored
+  // promote_to_decode & decode: flush DECODE_BUFFER and DIB_HIT_BUFFER
+  // dispatch_instruction: flush DISPATCH_BUFFER, LQ (make sure to empty entries, not delete), SQ; can use instr_id to cmp entries in LQ and SQ with mispredicted_branch
+  // 
+}
+
 void O3_CPU::push_instruction(ooo_model_instr instr)
 {
   input_queue.push_back(instr);
@@ -475,9 +491,10 @@ long O3_CPU::decode_instruction()
         // clear the branch_mispredicted bit so we don't attempt to resume fetch again at execute
         db_entry.branch_mispredicted = 0;
         // pay misprediction penalty
-        this->fetch_resume_time = this->current_time + BRANCH_MISPREDICT_PENALTY;
-	workload_source_pimpl[0]->flush();
-	on_WP = false;
+        //this->fetch_resume_time = this->current_time + BRANCH_MISPREDICT_PENALTY;
+	//workload_source_pimpl[0]->flush();
+	//on_WP = false;
+	do_flush(db_entry);
       }
     }
     // Add to dispatch
@@ -743,9 +760,10 @@ void O3_CPU::do_complete_execution(ooo_model_instr& instr)
   instr.completed = true;
 
   if (instr.branch_mispredicted) {
-    fetch_resume_time = current_time + BRANCH_MISPREDICT_PENALTY;
-    workload_source_pimpl[0]->flush();
-    on_WP = false;
+    //fetch_resume_time = current_time + BRANCH_MISPREDICT_PENALTY;
+    //workload_source_pimpl[0]->flush();
+    //on_WP = false;
+    do_flush(instr);
   }
 }
 
