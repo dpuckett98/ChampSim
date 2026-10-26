@@ -730,6 +730,7 @@ class wrong_path_tracereader
     //uint64_t steer_target = 0xdeadbeef;
 
     bool on_wp = false;
+    bool last_instr_read_wp = false;
     bool last_instr_on_wp = false;
     bool prev_valid = false;
     bool prev_branch_taken = false;
@@ -1044,7 +1045,7 @@ class wrong_path_tracereader
                              dst_mem, src_mem);
     }
 
-    constexpr void apply_deltas_to_overlay(const delta_section& delta_sec, OverlayType& overlay_to_use, const uint32_t template_id,
+    constexpr void apply_deltas_to_overlay(const delta_section& delta_sec, OverlayType& overlay_to_use, std::optional<std::reference_wrapper<OverlayType>> backup_overlay, const uint32_t template_id,
                                            const std::size_t num_instrs)
     {
       const auto& deltas = delta_sec.records;
@@ -1054,9 +1055,15 @@ class wrong_path_tracereader
               fmt::format("[ERROR] Illegal instruction position {} found for template {} with {} instructions", delta.ipos, template_id, num_instrs));
 
         const overlay_key key(template_id, delta.ipos);
-        if (overlay_to_use.find(key) == overlay_to_use.end()) {
-	  fmt::print(stderr, "{},{},{}\n New value {}\n", template_id, delta.ipos, delta.fid, delta.delta);
-          overlay_to_use[key][delta.fid] = delta.delta;
+        fmt::print(stderr, "{},{},{}\n", template_id, delta.ipos, delta.fid);
+        if (overlay_to_use.find(key) == overlay_to_use.end() || overlay_to_use[key].find(delta.fid) == overlay_to_use[key].end()) {
+	  if (!backup_overlay.has_value() || backup_overlay.value().get().find(key) == backup_overlay.value().get().end() || backup_overlay.value().get()[key].find(delta.fid) == backup_overlay.value().get()[key].end()) {
+	    fmt::print(stderr, "{},{},{}\n New value {}\n", template_id, delta.ipos, delta.fid, delta.delta);
+            overlay_to_use[key][delta.fid] = delta.delta;
+	  } else {
+            fmt::print(stderr, "{},{},{}\n Previous value from backup overlay {}\ndelta {}\n", template_id, delta.ipos, delta.fid, backup_overlay.value().get()[key][delta.fid], delta.delta);
+	    overlay_to_use[key][delta.fid] = add_bitset(backup_overlay.value().get()[key][delta.fid], delta.delta);
+	  }
 	} else {
 	  fmt::print(stderr, "{},{},{}\n Previous value {}\ndelta {}\n", template_id, delta.ipos, delta.fid, overlay_to_use[key][delta.fid], delta.delta);
           overlay_to_use[key][delta.fid] = add_bitset(overlay_to_use[key][delta.fid], delta.delta);
@@ -1090,7 +1097,8 @@ class wrong_path_tracereader
       const auto& bb_template = header.templates.at(entry.template_id);
       const auto& instructions = bb_template.instructions;
 
-      apply_deltas_to_overlay(entry.cp_delta, overlay, entry.template_id, instructions.size());
+      fmt::print(stderr, "[INFO] continue_cp");
+      apply_deltas_to_overlay(entry.cp_delta, overlay, std::nullopt, entry.template_id, instructions.size());
 
       // Generate instructions
       const std::size_t num_instr = instructions.size();
@@ -1127,7 +1135,8 @@ class wrong_path_tracereader
         const auto& bb_template = header.templates.at(template_id);
         const auto& instructions = bb_template.instructions;
 
-        apply_deltas_to_overlay(deltas, wp_state.value().overlay, template_id, instructions.size());
+	fmt::print(stderr, "[INFO] construct_wp_instructions\n");
+        apply_deltas_to_overlay(deltas, wp_state.value().overlay, std::ref(overlay), template_id, instructions.size());
         fmt::print(stderr, "[INFO] Applied deltas for {}\n", template_id);
 
         const std::size_t num_instr = instructions.size();
@@ -1173,9 +1182,9 @@ class wrong_path_tracereader
 
       if (!wp_state) {
         wp_state = std::make_optional<wp_state_type>();
-        //wp_state.value().overlay = overlay; // Fork off a copy of the current overlay
+        wp_state.value().overlay = {}; //overlay; // Fork off a copy of the current overlay
+        wp_state.value().regfile = regfile; // Fork off a copy of the current regfile
       }
-      wp_state.value().regfile = regfile; // Fork off a copy of the current regfile
 
       const wp_chain_section& wp_chain = entry.wp_chain.value();
 
@@ -1526,13 +1535,19 @@ class wrong_path_tracereader
     [[nodiscard]] constexpr std::optional<std::vector<ooo_model_instr>> get_next_instrs(const bool from_cp = true)
     {
       const bool now_on_cp = from_cp;
-      const bool was_on_cp = (!wp_state.has_value());
-      const bool was_on_wp = (wp_state.has_value());
+      const bool was_on_cp = !last_instr_read_wp; //(!wp_state.has_value());
+      const bool was_on_wp = !was_on_cp; //(wp_state.has_value());
       const bool resteer_from_wp_to_cp = (was_on_wp && now_on_cp);
       const bool cp_to_cp = was_on_cp and now_on_cp;
       const bool wp_to_cp = was_on_wp and resteer_from_wp_to_cp;
       const bool wp_disabled = (!wp_enabled);
       const bool fetch_from_cp = wp_disabled or first_entry or cp_to_cp or wp_to_cp;
+
+      if (was_on_wp && !from_cp) {
+        return std::nullopt;
+      }
+
+      last_instr_read_wp = !from_cp;
 
       std::optional<std::vector<ooo_model_instr>> retvec;
       if (fetch_from_cp) { // Fetch from the correct path
@@ -1543,8 +1558,8 @@ class wrong_path_tracereader
             const auto& deltas = last_body_entry->wp_chain->wp_deltas[i];
             const auto& bb_template = header.templates.at(template_id);
             const auto& instructions = bb_template.instructions;
-
-            apply_deltas_to_overlay(deltas, wp_state.value().overlay, template_id, instructions.size());
+            fmt::print(stderr, "[INFO] get_next_instrs\n");
+            apply_deltas_to_overlay(deltas, wp_state.value().overlay, std::ref(overlay), template_id, instructions.size());
             fmt::print(stderr, "[INFO] Skipping WP, so applied deltas for {}\n", template_id);
 	  }
 	}
@@ -1567,7 +1582,7 @@ class wrong_path_tracereader
 
       const auto retval = instr_buffer.front();
       instr_buffer.pop_front();
-      cp_instruction_num++;
+      //cp_instruction_num++; TODO
       return retval;
     }
 
@@ -1601,8 +1616,7 @@ class wrong_path_tracereader
     // i = next_instr()
     // b, tkn, target = btb(i)
     // if b:
-    //   steer(tkn, target)
-    // if b, tkn, target don't match i, i.branch_mispredicted = true
+    //   on_wp = steer(tkn, target)
     [[nodiscard]] constexpr std::optional<ooo_model_instr> next_instr() override
     {
       if (!wp_enabled && on_wp) {
@@ -1681,6 +1695,9 @@ class wrong_path_tracereader
       if (on_wp) {
         throw std::runtime_error(fmt::format("[ERROR] core trying to steer while on WP"));
       }
+      if (instr_buffer.size() != 0) {
+        throw std::runtime_error(fmt::format("[ERROR] steering, but instr_buffer isn't empty {}", instr_buffer.size()));
+      }
       //if (wp_enabled) {
 	if (prev_branch_taken && !taken) {
           on_wp = true;
@@ -1706,6 +1723,7 @@ class wrong_path_tracereader
       on_wp = false;
       prev_branch_taken = last_cp_branch_taken;
       prev_branch_target = last_cp_branch_target;
+      instr_buffer.clear(); // flush WP instrs. from instr_buffer
       /*if (wp_enabled) {
         prev_instr = last_cp_instr.value();
       }*/
@@ -1735,25 +1753,52 @@ class wrong_path_tracereader
       }
 
       // Flush the buffer if the core has diverged from the trace
-      const bool exhausted_current_basic_block = (instr_buffer.size() == 0);
+      /*const bool exhausted_current_basic_block = (instr_buffer.size() == 0);
       if (!exhausted_current_basic_block) {
         const bool diverged = !on_wp != from_cp; //prev_instr.has_value() && (!prev_instr->is_wp != from_cp);
         //const bool diverged = (next_pc != instr_buffer.front().ip.to<uint64_t>()) or resteer; // TODO: update this line
         if (diverged and wp_enabled) { // Drop the instructions in the buffer
           instr_buffer.clear();
         }
-      }
+      }*/
 
       // Time to re-fill the buffer
       // Note: Buffer is refilled *only* (i) at basic block boundaries, or (ii) at the start of a wrong path chain, or (iii) when trace inferred wrong
       // path instructions are needed
-      if ((instr_buffer.size() == 0)) {
-        const auto instrs = get_next_instrs(from_cp);
+      if (instr_buffer.size() == 0) {
+	std::optional<std::vector<ooo_model_instr>> retvec;
+	if (from_cp) {
+          if (wp_enabled && last_body_entry.has_value() && !last_body_entry->wp_deltas_added && !first_entry) {
+            for (std::size_t i = 0; i < last_body_entry->wp_chain->num_wp; i++) {
+              const uint32_t template_id = last_body_entry->wp_chain->template_ids[i];
+              const auto& deltas = last_body_entry->wp_chain->wp_deltas[i];
+              const auto& bb_template = header.templates.at(template_id);
+              const auto& instructions = bb_template.instructions;
+              fmt::print(stderr, "[INFO] read\n");
+              apply_deltas_to_overlay(deltas, wp_state.value().overlay, std::ref(overlay), template_id, instructions.size());
+              fmt::print(stderr, "[INFO] Skipping WP, so applied deltas for {}; # instrs = {}, # deltas = {}\n", template_id, instructions.size(), deltas.records.size());
+            }
+          }
+          last_body_entry.emplace(handle_entry());
+          retvec = continue_cp(last_body_entry.value()); //construct_instructions(last_body_entry.value(), from_cp);
+          read_till_next_entry();
+	} else {
+          if (!last_body_entry->wp_deltas_added) {
+            retvec = start_wp(last_body_entry.value());
+          } else {
+            retvec = continue_wp();
+          }
+	}
+	if (!retvec.has_value())
+          return std::nullopt;
+	instr_buffer.insert(std::end(instr_buffer), std::make_move_iterator(std::begin(*retvec)), std::make_move_iterator(std::end(*retvec)));
+        /*const auto instrs = get_next_instrs(from_cp);
 	if (!instrs.has_value())
 	  return std::nullopt;
         if (instrs->size() == 0)
           throw std::runtime_error("[ERROR] Could not generate instructions");
-        instr_buffer.insert(std::end(instr_buffer), std::make_move_iterator(std::begin(*instrs)), std::make_move_iterator(std::end(*instrs)));
+        instr_buffer.insert(std::end(instr_buffer), std::make_move_iterator(std::begin(*instrs)), std::make_move_iterator(std::end(*instrs)));*/
+	fmt::print(stderr, "Finished adding {} new instrs\n", (*retvec).size());
       }
 
       // Return the next instruction
