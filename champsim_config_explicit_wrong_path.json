@@ -440,7 +440,7 @@
           "model": "WRONG_PATH_TRACE_WORKLOAD_SOURCE",
           "trace_file": "$trace0",
           "cpu": 0,
-          "wrong_path_enabled": false,
+          "wrong_path_enabled": true,
           "repeat": true
         }
       ]

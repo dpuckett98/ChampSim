@@ -724,14 +724,7 @@ class wrong_path_tracereader
     bool initialized = false; // Used for lazy initialization
     const bool wp_enabled = false;
 
-    //std::optional<ooo_model_instr> last_cp_instr;
-    //std::optional<ooo_model_instr> prev_instr;
-    //bool steer_taken = false;
-    //uint64_t steer_target = 0xdeadbeef;
-
     bool on_wp = false;
-    bool last_instr_read_wp = false;
-    bool last_instr_on_wp = false;
     bool prev_valid = false;
     bool prev_branch_taken = false;
     uint64_t prev_branch_target = 0xdeadbeef;
@@ -804,7 +797,6 @@ class wrong_path_tracereader
 
     std::optional<body_entry>
         last_body_entry;                 // The most recent BODY_TAG_ENTRY section that was used to generate instructions. Used for generating WP instructions
-    //uint64_t next_cp_bb_pc = 0xdeadbeef; // The start PC of the next BB on the correct path. Used for detecting re-steers
     bool first_entry = true; // True iff no BODY_TAG_ENTRY sections have been processed yet. Needed since we can't start the simulation from the wrong path
 
     // Members needed to read the trace in bulk
@@ -919,7 +911,7 @@ class wrong_path_tracereader
       uint64_t branch_target = 0xdeadbeef;
       for (const auto& [fid, delta] : deltas) {
         const std::string& fid_name = header.ids.at("field_id").right.at(fid);
-	fmt::print(stderr, "{} {} {}\n", fid_name, fid, delta);
+	//fmt::print(stderr, "{} {} {}\n", fid_name, fid, delta);
         if (fid_name == "CST_FID_N_LOADS") {
           n_loads = bitset_to_uint64_t(delta);
         } else if (fid_name == "CST_FID_N_STORES") {
@@ -1055,17 +1047,17 @@ class wrong_path_tracereader
               fmt::format("[ERROR] Illegal instruction position {} found for template {} with {} instructions", delta.ipos, template_id, num_instrs));
 
         const overlay_key key(template_id, delta.ipos);
-        fmt::print(stderr, "{},{},{}\n", template_id, delta.ipos, delta.fid);
+        //fmt::print(stderr, "{},{},{}\n", template_id, delta.ipos, delta.fid);
         if (overlay_to_use.find(key) == overlay_to_use.end() || overlay_to_use[key].find(delta.fid) == overlay_to_use[key].end()) {
 	  if (!backup_overlay.has_value() || backup_overlay.value().get().find(key) == backup_overlay.value().get().end() || backup_overlay.value().get()[key].find(delta.fid) == backup_overlay.value().get()[key].end()) {
-	    fmt::print(stderr, "{},{},{}\n New value {}\n", template_id, delta.ipos, delta.fid, delta.delta);
+	    //fmt::print(stderr, "{},{},{}\n New value {}\n", template_id, delta.ipos, delta.fid, delta.delta);
             overlay_to_use[key][delta.fid] = delta.delta;
 	  } else {
-            fmt::print(stderr, "{},{},{}\n Previous value from backup overlay {}\ndelta {}\n", template_id, delta.ipos, delta.fid, backup_overlay.value().get()[key][delta.fid], delta.delta);
+            //fmt::print(stderr, "{},{},{}\n Previous value from backup overlay {}\ndelta {}\n", template_id, delta.ipos, delta.fid, backup_overlay.value().get()[key][delta.fid], delta.delta);
 	    overlay_to_use[key][delta.fid] = add_bitset(backup_overlay.value().get()[key][delta.fid], delta.delta);
 	  }
 	} else {
-	  fmt::print(stderr, "{},{},{}\n Previous value {}\ndelta {}\n", template_id, delta.ipos, delta.fid, overlay_to_use[key][delta.fid], delta.delta);
+	  //fmt::print(stderr, "{},{},{}\n Previous value {}\ndelta {}\n", template_id, delta.ipos, delta.fid, overlay_to_use[key][delta.fid], delta.delta);
           overlay_to_use[key][delta.fid] = add_bitset(overlay_to_use[key][delta.fid], delta.delta);
 	}
       }
@@ -1097,7 +1089,6 @@ class wrong_path_tracereader
       const auto& bb_template = header.templates.at(entry.template_id);
       const auto& instructions = bb_template.instructions;
 
-      fmt::print(stderr, "[INFO] continue_cp");
       apply_deltas_to_overlay(entry.cp_delta, overlay, std::nullopt, entry.template_id, instructions.size());
 
       // Generate instructions
@@ -1135,9 +1126,9 @@ class wrong_path_tracereader
         const auto& bb_template = header.templates.at(template_id);
         const auto& instructions = bb_template.instructions;
 
-	fmt::print(stderr, "[INFO] construct_wp_instructions\n");
+	//fmt::print(stderr, "[INFO] construct_wp_instructions\n");
         apply_deltas_to_overlay(deltas, wp_state.value().overlay, std::ref(overlay), template_id, instructions.size());
-        fmt::print(stderr, "[INFO] Applied deltas for {}\n", template_id);
+        //fmt::print(stderr, "[INFO] Applied deltas for {}\n", template_id);
 
         const std::size_t num_instr = instructions.size();
         retvec.reserve(retvec.size() + instructions.size());
@@ -1145,7 +1136,6 @@ class wrong_path_tracereader
         uint64_t _;
         for (uint64_t ipos = 0; ipos < num_instr; ipos++) {
           const overlay_key key(template_id, ipos);
-	  fmt::print(stderr, "{}\n", key.format());
           retvec.emplace_back(generate_instruction<true>(pc, instructions[ipos], wp_state.value().overlay[key], _));
           retvec.back().set_wp_event_flags(); // Mark as wrong path non-faulting instruction
 
@@ -1172,10 +1162,6 @@ class wrong_path_tracereader
 
       if (!wp_enabled)
 	return std::nullopt;
-        //throw std::runtime_error("[ERROR] Can't generate wrong path instructions since wrong path isn't enabled");
-
-      //if (wp_state)
-      //  throw std::runtime_error(fmt::format("[ERROR] Attempting to instantiate a nested wrong path!"));
 
       if (not entry.wp_chain)
         throw std::runtime_error(fmt::format("[ERROR] WP chain is unavailable. Can't start WP!"));
@@ -1192,57 +1178,9 @@ class wrong_path_tracereader
       if (wp_chain.num_wp == 0)
         return continue_wp();
 
-      //const uint32_t next_wp_template_id = wp_chain.template_ids[0];
-      //fmt::print(stderr, "[INFO] Next WP template id = {}\n", next_wp_template_id);
-      //const uint64_t next_wp_bb_pc = header.templates.at(next_wp_template_id).start_pc;
-
-      // Wrong path isn't available. Fall back to trace inferred wrong path
-      //if (next_wp_bb_pc != next_bb_pc)
-      //  return continue_wp(next_bb_pc);
-
       entry.wp_deltas_added = true;
 
       return construct_wp_instructions(wp_chain);
-    }
-
-    [[nodiscard]] constexpr std::vector<ooo_model_instr> stop_wp(const body_entry& entry)
-    {
-      fmt::print(stderr, "[INFO] Stopping WP\n");
-      //if (!wp_enabled)
-      //  throw std::runtime_error("[ERROR] Can't stop wrong path since wrong path isn't enabled");
-
-      if (wp_enabled && !wp_state)
-        throw std::runtime_error(fmt::format("[ERROR] Detected mangled transient state!"));
-
-      //wp_state.reset(); // Discard transient WP state
-      return continue_cp(entry);
-    }
-
-    // Applies the deltas to the overlays and constructs a vector of ooo_model_instr from a single body entry
-    [[nodiscard]] constexpr std::optional<std::vector<ooo_model_instr>> construct_instructions(body_entry& entry, const bool from_cp = true)
-    {
-      if (header.templates.find(entry.template_id) == header.templates.end())
-        throw std::runtime_error(fmt::format("[ERROR] Unknown template ID {} found", entry.template_id));
-
-      if (wp_state.has_value() and !wp_enabled)
-        throw std::runtime_error("[ERROR] WP is disabled but were previously on wrong path");
-
-      const bool previously_on_wp = last_instr_on_wp; //wp_state.has_value();
-      const bool wp_to_cp = previously_on_wp and from_cp;
-      const bool wp_to_wp = previously_on_wp and !wp_to_cp;
-      const bool previously_on_cp = !previously_on_wp;
-      const bool cp_to_wp = previously_on_cp and !from_cp and wp_enabled;
-
-      if ((wp_to_wp or cp_to_wp) and !wp_enabled)
-        throw std::runtime_error("[ERROR] WP is disabled but trying to move to wrong path");
-
-      if (wp_to_wp) // Exhausted WP instructions from body entry. Use trace inferred wrong path
-        return continue_wp();
-      else if (wp_to_cp)
-        return stop_wp(entry);
-      else if (cp_to_wp)
-        return start_wp(entry);
-      return continue_cp(entry);
     }
 
     constexpr void handle_thread_switch()
@@ -1528,52 +1466,6 @@ class wrong_path_tracereader
       }
     }
 
-    // Reads the next instruction from the trace (from the next BODY_TAG_ENTRY), constructs an ooo_model_instr from it, and returns it
-    // Expects that the stream pointer points to the next BODY_TAG_ENTRY
-    // Returns a vector of *all* the instructions generated from the basic block template in BODY_TAG_ENTRY
-    // This function should *never* be called on correct path to generate instructions from the middle of basic block
-    [[nodiscard]] constexpr std::optional<std::vector<ooo_model_instr>> get_next_instrs(const bool from_cp = true)
-    {
-      const bool now_on_cp = from_cp;
-      const bool was_on_cp = !last_instr_read_wp; //(!wp_state.has_value());
-      const bool was_on_wp = !was_on_cp; //(wp_state.has_value());
-      const bool resteer_from_wp_to_cp = (was_on_wp && now_on_cp);
-      const bool cp_to_cp = was_on_cp and now_on_cp;
-      const bool wp_to_cp = was_on_wp and resteer_from_wp_to_cp;
-      const bool wp_disabled = (!wp_enabled);
-      const bool fetch_from_cp = wp_disabled or first_entry or cp_to_cp or wp_to_cp;
-
-      if (was_on_wp && !from_cp) {
-        return std::nullopt;
-      }
-
-      last_instr_read_wp = !from_cp;
-
-      std::optional<std::vector<ooo_model_instr>> retvec;
-      if (fetch_from_cp) { // Fetch from the correct path
-	//fmt::print(stderr, "fetch_from_cp, {}, {}\n", last_body_entry.has_value(), last_body_entry->wp_deltas_added);
-	if (wp_enabled && last_body_entry.has_value() && !last_body_entry->wp_deltas_added) {
-          for (std::size_t i = 0; i < last_body_entry->wp_chain->num_wp; i++) {
-            const uint32_t template_id = last_body_entry->wp_chain->template_ids[i];
-            const auto& deltas = last_body_entry->wp_chain->wp_deltas[i];
-            const auto& bb_template = header.templates.at(template_id);
-            const auto& instructions = bb_template.instructions;
-            fmt::print(stderr, "[INFO] get_next_instrs\n");
-            apply_deltas_to_overlay(deltas, wp_state.value().overlay, std::ref(overlay), template_id, instructions.size());
-            fmt::print(stderr, "[INFO] Skipping WP, so applied deltas for {}\n", template_id);
-	  }
-	}
-        last_body_entry.emplace(handle_entry());
-        retvec = construct_instructions(last_body_entry.value(), from_cp);
-        read_till_next_entry(); // Keep reading until we reach the next section (but don't read the section yet) to prepare for the next call
-      } else {                  // Fetch from the wrong path
-        if (!last_body_entry)   // There must always be a last_body_entry present for us to generate wrong path instructions
-          throw std::runtime_error(fmt::format("[ERROR] Can't generate wrong path instruction without the last BODY_TAG_ENTRY section"));
-        retvec = construct_instructions(last_body_entry.value(), from_cp);
-      }
-      return retvec;
-    }
-
     // Returns the next instruction from the instruction buffer
     [[nodiscard]] constexpr ooo_model_instr pop_from_instr_buffer()
     {
@@ -1620,7 +1512,6 @@ class wrong_path_tracereader
     [[nodiscard]] constexpr std::optional<ooo_model_instr> next_instr() override
     {
       if (!wp_enabled && on_wp) {
-	last_instr_on_wp = on_wp;
         return std::nullopt;
       }
       std::optional<ooo_model_instr> next = read(!on_wp);
@@ -1636,57 +1527,10 @@ class wrong_path_tracereader
       } else {
         prev_valid = false;
       }
-      last_instr_on_wp = on_wp;
       return next;
-
-
-      /*bool to_cp = true;
-
-      if (!wp_enabled || !prev_instr.has_value()) {
-	to_cp = true;
-      } else {
-        if (prev_instr->is_wp) {
-	  to_cp = false;
-	} else {
-          if (steer_taken) {
-            if (!prev_instr->is_branch)
-              throw std::runtime_error(fmt::format("[ERROR] Steered towards taken, but instr. isn't a branch"));
-
-            if (!prev_instr->branch_taken || prev_instr->branch_target.to<uint64_t>() != steer_target) {
-	      to_cp = false;
-	    } else {
-	      to_cp = true;
-	    }
-	  } else {
-            if (!prev_instr->is_branch || !prev_instr->branch_taken) {
-	      to_cp = true;
-	    } else {
-	      to_cp = false;
-	    }
-	  }
-	}
-      }
-
-      std::optional<ooo_model_instr> next = read(to_cp);
-
-      if (next.has_value() && next->is_wp && !prev_instr->is_wp) {
-	if (!prev_instr.has_value())
-	  throw std::runtime_error(fmt::format("[ERROR] next instr is wrong path, but prev_instr is empty"));
-        last_cp_instr = prev_instr.value(); // copies full instr
-      }
-      if (next.has_value())
-        prev_instr = next; // copies full instr -- could optimize by only copying is_wp, is_branch, branch_taken, and branch_target 
-      steer_taken = false;
-      steer_target = 0xdeadbeef;
-      return next;*/
     }
 
-    // prev_instr stores the last instr. returned by "next_instr()"
-    // steer stores cores current directions; either to CP, to WP, or not-set (e.g., PC=PC+4)
-    // wp_enabled marks whether or not wp instrs. are enabled or disabled
-    // Hard-to-handle state: steer to WP when prev_instr wasn't a branch (but should never get to that state??)
-
-    // compares taken and target to prev_instr's stats and updates steer accordingly; returns true is steer is a misprediction
+    // compares taken and target to prev_instr's stats and updates steer accordingly; returns true if steer is a misprediction
     bool steer(const bool taken = false, const uint64_t target = 0xdeadbeef) override
     {
       if (!prev_valid) {
@@ -1698,20 +1542,18 @@ class wrong_path_tracereader
       if (instr_buffer.size() != 0) {
         throw std::runtime_error(fmt::format("[ERROR] steering, but instr_buffer isn't empty {}", instr_buffer.size()));
       }
-      //if (wp_enabled) {
-	if (prev_branch_taken && !taken) {
-          on_wp = true;
-	  return true;
-	}
-	if (prev_branch_taken && prev_branch_target != target) {
-          on_wp = true;
-	  return true;
-	}
-      //}
+      if (prev_branch_taken && !taken) {
+        on_wp = true;
+        return true;
+      }
+      if (prev_branch_taken && prev_branch_target != target) {
+        on_wp = true;
+        return true;
+      }
       return false;
     }
 
-    // sets prev_instr to last_cp_instr
+    // switches from WP to CP, sets prev_instr to last_cp_instr, clears WP instrs from instr buffer
     void flush() override
     {
       if (!on_wp) {
@@ -1724,16 +1566,6 @@ class wrong_path_tracereader
       prev_branch_taken = last_cp_branch_taken;
       prev_branch_target = last_cp_branch_target;
       instr_buffer.clear(); // flush WP instrs. from instr_buffer
-      /*if (wp_enabled) {
-        prev_instr = last_cp_instr.value();
-      }*/
-        // potential flush states:
-	// 1: previously WP, moving to CP (BTB prediction was wrong but BP prediction was right; detected branch/target was off in decode; detected BMP in execute)
-	//   Handled in this implementation
-	// 2: previously WP, moving to WP (BTB prediction was wrong but BP prediction was wrong in a different way)
-	//   ILLEGAL in this trace format (once we're on WP, core gives up control)
-	// 3: previously CP, moving to WP (e.g., BTB prediction was right but BP prediction was wrong)
-	//   Requires storing old body entries... skipping for now; thus, only one predictor, not two
     }
 
     [[nodiscard]] constexpr std::optional<ooo_model_instr> read(const bool from_cp = true)
@@ -1751,16 +1583,6 @@ class wrong_path_tracereader
         // We should never reach this point
         throw std::runtime_error("[ERROR] No more instructions left to read. Exiting...");
       }
-
-      // Flush the buffer if the core has diverged from the trace
-      /*const bool exhausted_current_basic_block = (instr_buffer.size() == 0);
-      if (!exhausted_current_basic_block) {
-        const bool diverged = !on_wp != from_cp; //prev_instr.has_value() && (!prev_instr->is_wp != from_cp);
-        //const bool diverged = (next_pc != instr_buffer.front().ip.to<uint64_t>()) or resteer; // TODO: update this line
-        if (diverged and wp_enabled) { // Drop the instructions in the buffer
-          instr_buffer.clear();
-        }
-      }*/
 
       // Time to re-fill the buffer
       // Note: Buffer is refilled *only* (i) at basic block boundaries, or (ii) at the start of a wrong path chain, or (iii) when trace inferred wrong
@@ -1792,12 +1614,6 @@ class wrong_path_tracereader
 	if (!retvec.has_value())
           return std::nullopt;
 	instr_buffer.insert(std::end(instr_buffer), std::make_move_iterator(std::begin(*retvec)), std::make_move_iterator(std::end(*retvec)));
-        /*const auto instrs = get_next_instrs(from_cp);
-	if (!instrs.has_value())
-	  return std::nullopt;
-        if (instrs->size() == 0)
-          throw std::runtime_error("[ERROR] Could not generate instructions");
-        instr_buffer.insert(std::end(instr_buffer), std::make_move_iterator(std::begin(*instrs)), std::make_move_iterator(std::end(*instrs)));*/
 	fmt::print(stderr, "Finished adding {} new instrs\n", (*retvec).size());
       }
 
@@ -1833,24 +1649,6 @@ class wrong_path_tracereader
   std::unique_ptr<body_wrapper> body_stream = nullptr;
 
 public:
-  // next_pc is the PC of the next instruction that the core wants to execute
-  // resteer is set to true only in the very first call after a frontend resteer. It's set to false every other time
-  /*[[nodiscard]] ooo_model_instr operator()(const uint64_t next_pc = 0xdeadbeef, const bool resteer = false)
-  {
-
-    if (resteer)
-      fmt::print(stderr, "[INFO] Resteered to {:x}\n", next_pc);
-    if (!parsed_header)
-      parse_trace();
-
-    const ooo_model_instr& instr = body_stream->read(next_pc, resteer);
-
-    fmt::print(stderr, "{:x}: branch = {}, taken = {}, dst regs = {}, src regs = {}\n", instr.ip.to<uint64_t>(), instr.is_branch, instr.branch_taken,
-               instr.destination_registers, instr.source_registers);
-
-    return instr;
-  }*/
-
   std::optional<ooo_model_instr> next_instr() {
     if (!parsed_header)
       parse_trace();
