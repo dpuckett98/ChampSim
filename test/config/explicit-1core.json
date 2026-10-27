@@ -141,6 +141,7 @@
       "clock_period": {"time": "250p"}, "cpu": 0,
       "dib_set": 32, "dib_way": 8, "dib_window": 16,
       "dib_hit_buffer_size": 32, "dib_inorder_width": {"bandwidth": 5}, "dib_hit_latency": 1,
+      "fdip_instr_width": {"bandwidth": 6}, "fdip_branch_width": {"bandwidth": 20}, "fdip_taken_branch_width": {"bandwidth": 1},
       "ifetch_buffer_size": 64, "decode_buffer_size": 32, "dispatch_buffer_size": 32,
       "register_file_size": 128, "rob_size": 352, "lq_size": 128, "sq_size": 72,
       "fetch_width": {"bandwidth": 6}, "decode_width": {"bandwidth": 6},

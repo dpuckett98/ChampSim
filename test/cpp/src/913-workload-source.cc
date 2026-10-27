@@ -10,13 +10,12 @@ namespace {
 // A controllable workload source for testing
 struct mock_source_913 : public champsim::modules::workload_source {
   std::deque<ooo_model_instr> instructions_;
-  bool retire_called_ = false;
-  bool squash_called_ = false;
-  bool branch_mispredict_called_ = false;
+  bool steer_called_ = false;
+  bool flush_called_ = false;
 
   explicit mock_source_913(champsim::modules::ModuleBuilder) {}
 
-  ooo_model_instr next_instruction(const uint64_t = 0xdeadbeef, const bool = false) override {
+  std::optional<ooo_model_instr> next_instr() override {
     auto instr = instructions_.front();
     instructions_.pop_front();
     return instr;
@@ -24,9 +23,8 @@ struct mock_source_913 : public champsim::modules::workload_source {
 
   [[nodiscard]] bool eof() const override { return instructions_.empty(); }
 
-  void retire_instruction(const ooo_model_instr&) override { retire_called_ = true; }
-  void squash_instruction(const ooo_model_instr&) override { squash_called_ = true; }
-  void branch_mispredict(const ooo_model_instr&) override { branch_mispredict_called_ = true; }
+  bool steer(const bool, const uint64_t) override { steer_called_ = true; return true; }
+  void flush() override { flush_called_ = true; }
 };
 
 static champsim::modules::workload_source::register_module<mock_source_913>
@@ -35,7 +33,7 @@ static champsim::modules::workload_source::register_module<mock_source_913>
 // A minimal no-op source to test default hook behavior
 struct noop_source_913 : public champsim::modules::workload_source {
   explicit noop_source_913(champsim::modules::ModuleBuilder) {}
-  ooo_model_instr next_instruction(const uint64_t, const bool) override { return champsim::test::instruction_with_ip(0); }
+  std::optional<ooo_model_instr> next_instr() override { return champsim::test::instruction_with_ip(0); }
   [[nodiscard]] bool eof() const override { return true; }
   // No override of hooks — uses defaults
 };
@@ -73,7 +71,7 @@ struct mock_core_913 : public champsim::modules::core_module {
   void fill_from_sources() {
     for (auto* src : sources_) {
       for (auto space = instructions_requested(); !src->eof() && space > 0; --space)
-        push_instruction(src->next_instruction());
+        push_instruction(src->next_instr().value());
     }
   }
 };
@@ -95,7 +93,7 @@ static champsim::modules::environment_module::register_module<mock_env_913>
 
 } // anonymous namespace
 
-TEST_CASE("workload_source next_instruction returns queued instructions") {
+TEST_CASE("workload_source next_instr returns queued instructions") {
   auto env_b = champsim::modules::ModuleBuilder("env_ws", "MOCK_ENV_913");
   auto* env = champsim::modules::environment_module::create_instance(env_b, static_cast<champsim::modules::environment_module*>(nullptr));
 
@@ -115,9 +113,9 @@ TEST_CASE("workload_source next_instruction returns queued instructions") {
   src->instructions_ = {i1, i2};
 
   REQUIRE_FALSE(src->eof());
-  auto got1 = src->next_instruction();
+  auto got1 = src->next_instr().value();
   CHECK(got1.ip == champsim::address{0xDEAD});
-  auto got2 = src->next_instruction();
+  auto got2 = src->next_instr().value();
   CHECK(got2.ip == champsim::address{0xBEEF});
   REQUIRE(src->eof());
 }
@@ -139,7 +137,7 @@ TEST_CASE("workload_source eof is true when no instructions remain") {
   src->instructions_.push_back(champsim::test::instruction_with_ip(1));
   REQUIRE_FALSE(src->eof());
   // Consume it
-  src->next_instruction();
+  src->next_instr();
   REQUIRE(src->eof());
 }
 
@@ -186,7 +184,7 @@ TEST_CASE("core source_eof reflects source state") {
   REQUIRE_FALSE(mc->source_eof());
 
   // Consume → source_eof true again
-  src->next_instruction();
+  src->next_instr();
   REQUIRE(mc->source_eof());
 }
 
@@ -203,7 +201,7 @@ TEST_CASE("core with no workload sources has source_eof true") {
   REQUIRE(mc->source_eof());
 }
 
-TEST_CASE("execution-driven hooks are callable without crash") {
+TEST_CASE("steer and flush are callable without crash") {
   auto env_b = champsim::modules::ModuleBuilder("env_hooks", "MOCK_ENV_913");
   auto* env = champsim::modules::environment_module::create_instance(env_b, static_cast<champsim::modules::environment_module*>(nullptr));
 
@@ -214,22 +212,16 @@ TEST_CASE("execution-driven hooks are callable without crash") {
   auto* mc = dynamic_cast<mock_core_913*>(core);
   auto* src = dynamic_cast<mock_source_913*>(mc->sources_.front());
 
-  auto instr = champsim::test::instruction_with_ip(0x42);
+  REQUIRE_FALSE(src->steer_called_);
+  REQUIRE(src->steer(true, 0x42));
+  REQUIRE(src->steer_called_);
 
-  REQUIRE_FALSE(src->retire_called_);
-  src->retire_instruction(instr);
-  REQUIRE(src->retire_called_);
-
-  REQUIRE_FALSE(src->squash_called_);
-  src->squash_instruction(instr);
-  REQUIRE(src->squash_called_);
-
-  REQUIRE_FALSE(src->branch_mispredict_called_);
-  src->branch_mispredict(instr);
-  REQUIRE(src->branch_mispredict_called_);
+  REQUIRE_FALSE(src->flush_called_);
+  src->flush();
+  REQUIRE(src->flush_called_);
 }
 
-TEST_CASE("default execution-driven hooks are no-ops") {
+TEST_CASE("default steer and flush are no-ops") {
   auto env_b = champsim::modules::ModuleBuilder("env_noop", "MOCK_ENV_913");
   auto* env = champsim::modules::environment_module::create_instance(env_b, static_cast<champsim::modules::environment_module*>(nullptr));
 
@@ -240,11 +232,9 @@ TEST_CASE("default execution-driven hooks are no-ops") {
   auto* mc = dynamic_cast<mock_core_913*>(core);
   auto* src = mc->sources_.front();
 
-  auto instr = champsim::test::instruction_with_ip(0);
   // These should not crash — default implementations are no-ops
-  REQUIRE_NOTHROW(src->retire_instruction(instr));
-  REQUIRE_NOTHROW(src->squash_instruction(instr));
-  REQUIRE_NOTHROW(src->branch_mispredict(instr));
+  REQUIRE_FALSE(src->steer(true, 0x42));
+  REQUIRE_NOTHROW(src->flush());
   // Source with no instructions is also at EOF
   REQUIRE(src->eof());
 }

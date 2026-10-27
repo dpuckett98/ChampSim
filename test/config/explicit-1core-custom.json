@@ -623,6 +623,15 @@
       "dib_inorder_width": {
         "bandwidth": 5
       },
+      "fdip_instr_width": {
+        "bandwidth": 6
+      },
+      "fdip_branch_width": {
+        "bandwidth": 20
+      },
+      "fdip_taken_branch_width": {
+        "bandwidth": 1
+      },
       "dib_hit_latency": 1,
       "ifetch_buffer_size": 64,
       "decode_buffer_size": 32,

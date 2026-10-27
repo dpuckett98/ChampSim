@@ -11,14 +11,11 @@ struct mock_repeatable {
 
   bool eof() const { return ever_repeats; }
 
-  ooo_model_instr operator()() { return ooo_model_instr{0, input_instr{}}; }
+  std::optional<ooo_model_instr> next_instr() { return ooo_model_instr{0, input_instr{}}; }
+  bool steer(bool, uint64_t) { return false; }
+  void flush() {}
 
   explicit mock_repeatable(bool r) : ever_repeats(r) { constructor_calls++; }
-};
-
-struct restart_indicator {
-  bool* ext;
-  void operator()() { *ext = true; }
 };
 } // namespace
 
@@ -27,26 +24,42 @@ TEST_CASE("A repeatable repeats")
   champsim::repeatable<mock_repeatable, bool> uut{true};
 
   auto old_calls = mock_repeatable::constructor_calls;
-  (void)uut();
+  (void)uut.next_instr();
   REQUIRE(mock_repeatable::constructor_calls > old_calls);
 }
 
 namespace
 {
-template <typename T>
-struct configurable_repeatable {
-  bool eof() const { return true; }
+struct steerable_repeatable {
+  bool steer_called = false;
+  bool steer_taken = false;
+  uint64_t steer_target = 0;
+  bool flush_called = false;
 
-  T operator()() { return T{}; }
-};
+  bool eof() const { return false; }
 
-struct dummy_return_t {
+  std::optional<ooo_model_instr> next_instr() { return std::nullopt; }
+  bool steer(bool taken, uint64_t target)
+  {
+    steer_called = true;
+    steer_taken = taken;
+    steer_target = target;
+    return true;
+  }
+  void flush() { flush_called = true; }
 };
 } // namespace
 
-TEST_CASE("A repeatable's generator takes the type of the underlying generator")
+TEST_CASE("A repeatable forwards steer() and flush() to the underlying reader")
 {
-  STATIC_REQUIRE(std::is_same_v<std::string, std::invoke_result_t<champsim::repeatable<::configurable_repeatable<std::string>>>>);
+  champsim::repeatable<steerable_repeatable> uut{};
 
-  STATIC_REQUIRE(std::is_same_v<::dummy_return_t, std::invoke_result_t<champsim::repeatable<::configurable_repeatable<::dummy_return_t>>>>);
+  REQUIRE(uut.steer(true, 0x1234));
+  REQUIRE(uut.intern_.steer_called);
+  REQUIRE(uut.intern_.steer_taken);
+  REQUIRE(uut.intern_.steer_target == 0x1234);
+
+  REQUIRE_FALSE(uut.intern_.flush_called);
+  uut.flush();
+  REQUIRE(uut.intern_.flush_called);
 }
