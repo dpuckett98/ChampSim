@@ -140,6 +140,7 @@ public:
   champsim::chrono::clock::time_point fetch_resume_time{};
   bool on_WP = false;
   std::optional<ooo_model_instr> fdip_peeked_instr;
+  std::optional<uint64_t> pending_flush_id; // instr_id of the oldest mispredicted branch awaiting a squash of younger instrs.
 
   const long IN_QUEUE_SIZE;
   std::deque<ooo_model_instr> input_queue;
@@ -182,6 +183,8 @@ public:
   bool do_init_instruction(ooo_model_instr& instr);
   void do_predict_branch(ooo_model_instr& instr);
   void do_flush(ooo_model_instr& mispredicted_branch);
+  void squash_pending_flush();
+  void squash_younger_than(uint64_t instr_id);
   void do_check_dib(ooo_model_instr& instr);
   bool do_fetch_instruction(std::deque<ooo_model_instr>::iterator begin, std::deque<ooo_model_instr>::iterator end);
   void do_dib_update(const ooo_model_instr& instr);

@@ -36,6 +36,7 @@ long O3_CPU::operate()
   long progress{0};
   progress += retire_rob();                    // retire
   progress += complete_inflight_instruction(); // finalize execution
+  squash_pending_flush();                      // squash instrs. younger than a branch mispredict resolved at execute
   progress += execute_instruction();           // execute instructions
   progress += schedule_instruction();          // schedule instructions
   progress += handle_memory_return();          // finalize memory transactions
@@ -43,6 +44,7 @@ long O3_CPU::operate()
 
   progress += dispatch_instruction(); // dispatch
   progress += decode_instruction();   // decode
+  squash_pending_flush();             // squash instrs. younger than a branch mispredict resolved at decode
   progress += promote_to_decode();
 
   progress += fetch_instruction(); // fetch
@@ -282,15 +284,57 @@ void O3_CPU::do_flush(ooo_model_instr& mispredicted_branch)
   this->fetch_resume_time = this->current_time + BRANCH_MISPREDICT_PENALTY;
   workload_source_pimpl[0]->flush();
   on_WP = false;
+  fdip_peeked_instr.reset(); // the peeked instr. is on the WP; don't let it leak onto the CP after the flush
   fmt::print("[FLUSH] instr_id: {} ip: {} cycle: {}\n", mispredicted_branch.instr_id, mispredicted_branch.ip, current_time.time_since_epoch() / clock_period);
 
-  // flush instrs. from FE
-  // check_dib: nothing needed
-  // fetch_instruction: flush IFETCH_BUFFER; don't need to change handle_memory_return to ignore responses to fetched-then-flushed instructions; may need to change handle_memory_return to
-  // 	consume some sort of BW on a per-response basis, because current version will consume 0 bandwidth whenever a response is ignored
-  // promote_to_decode & decode: flush DECODE_BUFFER and DIB_HIT_BUFFER
-  // dispatch_instruction: flush DISPATCH_BUFFER, LQ (make sure to empty entries, not delete), SQ; can use instr_id to cmp entries in LQ and SQ with mispredicted_branch
-  // 
+  // do_flush is called while iterating over pipeline structures, so defer the squash until the calling stage finishes.
+  // instr_ids are assigned in fetch order, so every instr. younger than the branch (i.e., on the WP) has a larger instr_id.
+  pending_flush_id = std::min(pending_flush_id.value_or(mispredicted_branch.instr_id), mispredicted_branch.instr_id);
+}
+
+void O3_CPU::squash_pending_flush()
+{
+  if (pending_flush_id.has_value()) {
+    squash_younger_than(pending_flush_id.value());
+    pending_flush_id.reset();
+  }
+}
+
+void O3_CPU::squash_younger_than(uint64_t instr_id)
+{
+  auto younger = [instr_id](const auto& x) {
+    return x.instr_id > instr_id;
+  };
+
+  // flush instrs. from FE; responses to fetched-then-flushed instrs. are ignored by handle_memory_return since their instr_id is no longer in IFETCH_BUFFER
+  for (auto* buffer : {&IFETCH_BUFFER, &DECODE_BUFFER, &DIB_HIT_BUFFER, &DISPATCH_BUFFER}) {
+    buffer->erase(std::remove_if(std::begin(*buffer), std::end(*buffer), younger), std::end(*buffer));
+  }
+
+  // free the physical registers renamed by squashed instrs., then restore the wrong-path RAT to the correct-path mappings
+  for (const auto& rob_entry : ROB) {
+    if (younger(rob_entry) && rob_entry.scheduled) {
+      for (auto dreg : rob_entry.destination_registers) {
+        reg_allocator.free_register(dreg);
+      }
+    }
+  }
+  ROB.erase(std::remove_if(std::begin(ROB), std::end(ROB), younger), std::end(ROB));
+  reg_allocator.reset_wrong_path_RAT();
+
+  // empty (rather than delete) squashed LQ entries
+  for (auto& lq_entry : LQ) {
+    if (lq_entry.has_value() && younger(*lq_entry)) {
+      lq_entry.reset();
+    }
+  }
+
+  // remove squashed stores, and unlink squashed loads from surviving stores they were waiting on
+  SQ.erase(std::remove_if(std::begin(SQ), std::end(SQ), younger), std::end(SQ));
+  for (auto& sq_entry : SQ) {
+    auto& deps = sq_entry.lq_depend_on_me;
+    deps.erase(std::remove_if(std::begin(deps), std::end(deps), [](const auto& lq_entry) { return !lq_entry.get().has_value(); }), std::end(deps));
+  }
 }
 
 void O3_CPU::push_instruction(ooo_model_instr instr)
@@ -552,7 +596,7 @@ long O3_CPU::schedule_instruction()
   for (auto rob_it = std::begin(ROB); rob_it != std::end(ROB) && search_bw.has_remaining(); ++rob_it) {
     // if there aren't enough physical registers available for the next instruction, stop scheduling
     unsigned long sources_to_allocate = std::count_if(rob_it->source_registers.begin(), rob_it->source_registers.end(),
-                                                      [&alloc = std::as_const(reg_allocator)](auto srcreg) { return !alloc.isAllocated(srcreg); });
+                                                      [&alloc = std::as_const(reg_allocator), wp = rob_it->is_wp](auto srcreg) { return !alloc.isAllocated(srcreg, wp); });
     if (reg_allocator.count_free_registers() < (sources_to_allocate + rob_it->destination_registers.size())) {
       break;
     }
@@ -574,12 +618,12 @@ void O3_CPU::do_scheduling(ooo_model_instr& instr)
   // Mark register dependencies
   for (auto& src_reg : instr.source_registers) {
     // rename source register
-    src_reg = reg_allocator.rename_src_register(src_reg);
+    src_reg = reg_allocator.rename_src_register(src_reg, instr.is_wp);
   }
 
   for (auto& dreg : instr.destination_registers) {
     // rename destination register
-    dreg = reg_allocator.rename_dest_register(dreg, instr.instr_id);
+    dreg = reg_allocator.rename_dest_register(dreg, instr.instr_id, instr.is_wp);
   }
 
   instr.scheduled = true;
@@ -832,6 +876,7 @@ long O3_CPU::retire_rob()
   auto [retire_begin, retire_end] =
       champsim::get_span_p(std::cbegin(ROB), std::cend(ROB), champsim::bandwidth{RETIRE_WIDTH}, [](const auto& x) { return x.completed; });
   assert(std::distance(retire_begin, retire_end) >= 0); // end succeeds begin
+  assert(std::none_of(retire_begin, retire_end, [](const auto& x) { return x.is_wp; })); // WP instrs. must be squashed before retiring
   if constexpr (champsim::debug_print) {
     std::for_each(retire_begin, retire_end, [cycle = current_time.time_since_epoch() / clock_period](const auto& x) {
       fmt::print("[ROB] retire_rob instr_id: {} is retired cycle: {}\n", x.instr_id, cycle);

@@ -9,33 +9,42 @@ RegisterAllocator::RegisterAllocator(size_t num_physical_registers)
     free_registers.push(static_cast<PHYSICAL_REGISTER_ID>(i));
   }
   physical_register_file = std::vector<physical_register>(num_physical_registers, {0, 0, false, false});
-  frontend_RAT.fill(-1); // default value for no mapping
+  correct_path_RAT.fill(-1); // default value for no mapping
+  wrong_path_RAT.fill(-1);
   backend_RAT.fill(-1);
 }
 
-PHYSICAL_REGISTER_ID RegisterAllocator::rename_dest_register(int16_t reg, champsim::program_ordered<ooo_model_instr>::id_type producer_id)
+PHYSICAL_REGISTER_ID RegisterAllocator::rename_dest_register(int16_t reg, champsim::program_ordered<ooo_model_instr>::id_type producer_id, bool wrong_path)
 {
   assert(!free_registers.empty());
 
   PHYSICAL_REGISTER_ID phys_reg = free_registers.front();
   free_registers.pop();
-  frontend_RAT[reg] = phys_reg;
-  physical_register_file.at(phys_reg) = {(uint16_t)reg, producer_id, false, true}; // arch_reg_index, valid, busy
+
+  // wrong-path instrs. see all older renames, so correct-path renames update both frontend RATs; wrong-path renames only update the wrong-path RAT
+  wrong_path_RAT[reg] = phys_reg;
+  if (!wrong_path) {
+    correct_path_RAT[reg] = phys_reg;
+  }
+  physical_register_file.at(phys_reg) = {(uint16_t)reg, producer_id, false, true}; // arch_reg_index, producing_inst_id, valid, busy
 
   return phys_reg;
 }
 
-PHYSICAL_REGISTER_ID RegisterAllocator::rename_src_register(int16_t reg)
+PHYSICAL_REGISTER_ID RegisterAllocator::rename_src_register(int16_t reg, bool wrong_path)
 {
-  PHYSICAL_REGISTER_ID phys = frontend_RAT[reg];
+  PHYSICAL_REGISTER_ID phys = wrong_path ? wrong_path_RAT[reg] : correct_path_RAT[reg];
 
   if (phys < 0) {
     // allocate the register if it hasn't yet been mapped
     // (common due to the traces being slices in the middle of a program)
     phys = free_registers.front();
     free_registers.pop();
-    frontend_RAT[reg] = phys;
-    backend_RAT[reg] = phys;                                          // we assume this register's last write has been committed
+    // we assume this register's last write has been committed, so it is visible to both paths
+    // (if it were unmapped in only one frontend RAT, the wrong-path RAT would be missing an older correct-path rename)
+    correct_path_RAT[reg] = phys;
+    wrong_path_RAT[reg] = phys;
+    backend_RAT[reg] = phys;
     physical_register_file.at(phys) = {(uint16_t)reg, 0, true, true}; // arch_reg_index, producing_inst_id, valid, busy
   }
 
@@ -57,7 +66,7 @@ void RegisterAllocator::retire_dest_register(PHYSICAL_REGISTER_ID physreg)
   // update the backend RAT with the new phys reg
   backend_RAT[arch_reg] = physreg;
 
-  // free the old phys reg
+  // free the old phys reg; no frontend RAT can still reference it, since a younger correct-path write to the same arch reg has now committed
   if (old_phys_reg != -1) {
     free_register(old_phys_reg);
   }
@@ -76,7 +85,10 @@ bool RegisterAllocator::isValid(PHYSICAL_REGISTER_ID physreg) const
   return physical_register_file[physreg].valid;
 }
 
-bool RegisterAllocator::isAllocated(PHYSICAL_REGISTER_ID archreg) const { return frontend_RAT[archreg] != -1; }
+bool RegisterAllocator::isAllocated(PHYSICAL_REGISTER_ID archreg, bool wrong_path) const
+{
+  return (wrong_path ? wrong_path_RAT[archreg] : correct_path_RAT[archreg]) != -1;
+}
 
 unsigned long RegisterAllocator::count_free_registers() const { return std::size(free_registers); }
 
@@ -85,18 +97,18 @@ int RegisterAllocator::count_reg_dependencies(const ooo_model_instr& instr) cons
   return static_cast<int>(std::count_if(std::begin(instr.source_registers), std::end(instr.source_registers), [this](auto reg) { return !isValid(reg); }));
 }
 
-void RegisterAllocator::reset_frontend_RAT()
+void RegisterAllocator::reset_wrong_path_RAT()
 {
-  std::copy(std::begin(backend_RAT), std::end(backend_RAT), std::begin(frontend_RAT));
-  // once wrong path is implemented:
-  // find registers allocated by wrong-path instructions and free them
+  // discard wrong-path renames; the registers they allocated are freed when the wrong-path instructions are squashed
+  std::copy(std::begin(correct_path_RAT), std::end(correct_path_RAT), std::begin(wrong_path_RAT));
 }
 
 void RegisterAllocator::print_deadlock()
 {
-  fmt::print("Frontend Register Allocation Table        Backend Register Allocation Table\n");
-  for (size_t i = 0; i < frontend_RAT.size(); ++i) {
-    fmt::print("Arch reg: {:3}    Phys reg: {:3}            Arch reg: {:3}    Phys reg: {:3}\n", i, frontend_RAT[i], i, backend_RAT[i]);
+  fmt::print("Register Allocation Tables\n");
+  fmt::print("Arch reg    Correct-path phys reg    Wrong-path phys reg    Backend phys reg\n");
+  for (size_t i = 0; i < correct_path_RAT.size(); ++i) {
+    fmt::print("{:8}    {:21}    {:19}    {:16}\n", i, correct_path_RAT[i], wrong_path_RAT[i], backend_RAT[i]);
   }
 
   if (count_free_registers() == 0) {

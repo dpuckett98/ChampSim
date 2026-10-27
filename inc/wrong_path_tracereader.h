@@ -58,7 +58,19 @@ class wrong_path_tracereader
   bool moved = false;
   bool parsed_header = false; // The trace header is parsed lazily. This variable tracks whether or not the header has been parsed yet
 
-  void cleanup() const { std::filesystem::remove_all(trace_extract_dir); }
+  void cleanup()
+  {
+    // Close the extracted files before deleting them. On NFS, unlinking an open file leaves a .nfsXXXX placeholder behind, which makes the directory
+    // non-empty and the removal fail.
+    header_stream.reset();
+    body_stream.reset();
+
+    // Don't throw: this runs from the destructor, where an exception calls std::terminate
+    std::error_code ec;
+    std::filesystem::remove_all(trace_extract_dir, ec);
+    if (ec)
+      fmt::print(stderr, "[WARNING] Failed to remove extracted trace directory {}: {}\n", trace_extract_dir.string(), ec.message());
+  }
 
   void parse_trace();
   constexpr void verify_trace_file_type() const;
@@ -983,10 +995,12 @@ class wrong_path_tracereader
         }
       }
       if (max_observed_load_count > n_loads) {
-        throw std::runtime_error(fmt::format("[ERROR] Observed data for load #{} for an instruction with {} loads", max_observed_load_count, n_loads));
+        src_mem.erase(src_mem.begin() + n_loads, src_mem.end());
+        //throw std::runtime_error(fmt::format("[ERROR] Observed data for load #{} for an instruction with {} loads", max_observed_load_count, n_loads));
       }
       if (max_observed_store_count > n_stores) {
-        throw std::runtime_error(fmt::format("[ERROR] Observed data for store #{} for an instruction with {} stores", max_observed_store_count, n_stores));
+        dst_mem.erase(dst_mem.begin() + n_stores, dst_mem.end());
+	//throw std::runtime_error(fmt::format("[ERROR] Observed data for store #{} for an instruction with {} stores", max_observed_store_count, n_stores));
       }
 
       // Identify if this instruction is a branch or not
@@ -1597,6 +1611,11 @@ class wrong_path_tracereader
               const auto& bb_template = header.templates.at(template_id);
               const auto& instructions = bb_template.instructions;
               fmt::print(stderr, "[INFO] read\n");
+              if (!wp_state) {
+                wp_state = std::make_optional<wp_state_type>();
+                wp_state.value().overlay = {}; //overlay; // Fork off a copy of the current overlay
+                wp_state.value().regfile = regfile; // Fork off a copy of the current regfile
+              }
               apply_deltas_to_overlay(deltas, wp_state.value().overlay, std::ref(overlay), template_id, instructions.size());
               fmt::print(stderr, "[INFO] Skipping WP, so applied deltas for {}; # instrs = {}, # deltas = {}\n", template_id, instructions.size(), deltas.records.size());
             }

@@ -109,7 +109,8 @@ public:
 
   std::optional<ooo_model_instr> next_instr() {
     auto retval = (*pimpl_).next_instr();
-    retval->instr_id = instr_unique_id++;
+    if (retval.has_value())
+      retval->instr_id = instr_unique_id++;
     return retval;
   }
 
