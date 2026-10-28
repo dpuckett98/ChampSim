@@ -138,12 +138,19 @@ void O3_CPU::direct_fdip()
 
   bool stop_fetch = false;
 
+  // the workload source must not be read past its end; returning no instr. halts fetch, just like running out of WP instrs.
+  auto next_from_source = [src = workload_source_pimpl[0]]() -> std::optional<ooo_model_instr> {
+    if (src->eof())
+      return std::nullopt;
+    return src->next_instr();
+  };
+
   // while bandwidth available & fetch isn't stopped (fetch stopped when the trace runs out of WP instrs.)
   while (current_time >= fetch_resume_time && !stop_fetch && instrs_bw.has_remaining() && branch_bw.has_remaining() && taken_branch_bw.has_remaining()) {
     // get next instr; this is either the instr we peeked at last time or the next instr from the workload source
     auto arch_instr = fdip_peeked_instr;
     if (!arch_instr.has_value())
-      arch_instr = workload_source_pimpl[0]->next_instr();
+      arch_instr = next_from_source();
     else
       fdip_peeked_instr.reset();
 
@@ -182,7 +189,7 @@ void O3_CPU::direct_fdip()
       } else {
         // if we're on the wrong path, then only consume taken_branch_bw if the WP trace predicts this branch taken;
 	// may not be able to use info from the instr. because the instr. may be pointing to the CP taken/target rather than what the WP does
-	fdip_peeked_instr = workload_source_pimpl[0]->next_instr();
+	fdip_peeked_instr = next_from_source();
 	if (fdip_peeked_instr.has_value()) {
           // if the next instr is NOT right after arch_instr, then the WP trace assumed the branch was taken and we should consume taken_branch_bw
           if (fdip_peeked_instr->ip.to<uint64_t>() != arch_instr->ip.to<uint64_t>() + arch_instr->instr_size) {
