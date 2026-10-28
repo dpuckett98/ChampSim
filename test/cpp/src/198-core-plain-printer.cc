@@ -1,6 +1,7 @@
 #include <catch.hpp>
 
 #include "core_stats.h"
+#include "json_stat_builder.h"
 #include "modules.h"
 
 TEST_CASE("An empty core stats prints zero")
@@ -100,4 +101,33 @@ TEST_CASE("The ROB occupancy modifies the flush penalty")
                                     "BRANCH_RETURN: 0"};
 
   REQUIRE_THAT(champsim::modules::core_module::format_plaintext(given), Catch::Matchers::RangeEquals(expected));
+}
+
+TEST_CASE("Pipeline stage counts are printed in pipeline order")
+{
+  cpu_stats given{};
+  given.name = "test_cpu";
+  given.stage_counts["retire"] = {10, 0};
+  given.stage_counts["fetch"] = {12, 5};
+  given.stage_counts["decode"] = {11, 3};
+
+  auto lines = champsim::modules::core_module::format_plaintext(given);
+  std::vector<std::string> stage_lines{std::find(std::begin(lines), std::end(lines), "Pipeline stage counts"), std::end(lines)};
+
+  std::vector<std::string> expected{"Pipeline stage counts", "fetch: correct path: 12 wrong path: 5", "decode: correct path: 11 wrong path: 3",
+                                    "retire: correct path: 10 wrong path: 0"};
+  REQUIRE_THAT(stage_lines, Catch::Matchers::RangeEquals(expected));
+}
+
+TEST_CASE("Pipeline stage counts are written to JSON")
+{
+  cpu_stats given{};
+  given.name = "test_cpu";
+  given.stage_counts["fetch"] = {12, 5};
+
+  champsim::json_stat_builder b;
+  champsim::modules::core_module::format_json(given, b);
+
+  REQUIRE(b.json().at("stage counts").at("fetch").at("correct path") == 12);
+  REQUIRE(b.json().at("stage counts").at("fetch").at("wrong path") == 5);
 }
