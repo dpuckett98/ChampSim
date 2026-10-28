@@ -1795,15 +1795,14 @@ constexpr void wrong_path_tracereader::verify_trace_file_type() const
   const std::filesystem::path base_extract_dir(".temp_extracted_trace");
   std::filesystem::path extract_dir = base_extract_dir;
   uint64_t suffix = 0;
-  while (std::filesystem::is_directory(extract_dir)) {
+  // create_directory() returns false if the directory already exists, so concurrent simulations each claim a distinct directory
+  // (checking for existence first and creating afterwards races with other simulations started at the same time)
+  while (!std::filesystem::create_directory(extract_dir)) {
     suffix += 1;
     extract_dir = base_extract_dir;
     extract_dir += std::to_string(suffix);
   }
   fmt::print(stderr, "New dir: {}\n", extract_dir.string());
-  const bool success = std::filesystem::create_directory(extract_dir);
-  if (!success)
-    throw std::runtime_error("[ERROR] Could not create the directory to extract the wrong path trace. Exiting...");
 
   return extract_dir;
 }
