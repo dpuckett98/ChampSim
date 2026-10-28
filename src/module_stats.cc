@@ -31,6 +31,24 @@ auto print_ratio(N num, D denom)
   }
   return std::string{"-"};
 }
+
+// stages are printed in pipeline order; any stages not listed here are printed afterwards
+constexpr std::array<std::string_view, 8> pipeline_stage_order{"fetch", "dib_hit", "decode", "dispatch", "schedule", "execute", "complete", "retire"};
+
+template <typename F>
+void for_each_stage(const cpu_stats& stats, F&& func)
+{
+  for (auto stage : pipeline_stage_order) {
+    if (auto it = stats.stage_counts.find(std::string{stage}); it != std::end(stats.stage_counts)) {
+      func(it->first, it->second);
+    }
+  }
+  for (const auto& [stage, counts] : stats.stage_counts) {
+    if (std::find(std::begin(pipeline_stage_order), std::end(pipeline_stage_order), stage) == std::end(pipeline_stage_order)) {
+      func(stage, counts);
+    }
+  }
+}
 } // namespace
 
 // ============================================================================
@@ -61,6 +79,13 @@ std::vector<std::string> champsim::modules::core_module::format_plaintext(const 
                                 ::print_ratio(std::kilo::num * stats.branch_type_misses.value_or(idx, 0), stats.instrs())));
   }
 
+  if (!std::empty(stats.stage_counts)) {
+    lines.emplace_back("Pipeline stage counts");
+    ::for_each_stage(stats, [&lines](const auto& stage, const auto& counts) {
+      lines.push_back(fmt::format("{}: correct path: {} wrong path: {}", stage, counts.first, counts.second));
+    });
+  }
+
   return lines;
 }
 
@@ -79,6 +104,13 @@ void champsim::modules::core_module::format_json(const stats_type& stats, champs
   auto mpki = b.group("mispredict");
   for (auto type : types) {
     mpki.add(std::string{branch_type_names.at(champsim::to_underlying(type))}, stats.branch_type_misses.value_or(type, 0));
+  }
+
+  if (!std::empty(stats.stage_counts)) {
+    auto stages = b.group("stage counts");
+    ::for_each_stage(stats, [&stages](const auto& stage, const auto& counts) {
+      stages.group(stage).add("correct path", counts.first).add("wrong path", counts.second);
+    });
   }
 }
 

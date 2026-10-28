@@ -2,7 +2,9 @@
 #define CORE_STATS_H
 
 #include <cstdint>
+#include <map>
 #include <string>
+#include <utility>
 
 #include "event_counter.h"
 #include "instruction.h"
@@ -17,6 +19,9 @@ struct cpu_stats {
 
   champsim::stats::event_counter<branch_type> total_branch_types = {};
   champsim::stats::event_counter<branch_type> branch_type_misses = {};
+
+  // number of instrs. that pass through each pipeline stage, keyed by stage name: {correct path, wrong path}
+  std::map<std::string, std::pair<uint64_t, uint64_t>> stage_counts = {};
 
   [[nodiscard]] auto instrs() const { return end_instrs - begin_instrs; }
   [[nodiscard]] auto cycles() const { return end_cycles - begin_cycles; }

@@ -91,6 +91,16 @@ void O3_CPU::end_phase()
   roi_stats = sim_stats;
 }
 
+void O3_CPU::count_stage(const std::string& stage, const ooo_model_instr& instr)
+{
+  auto& [correct_path, wrong_path] = sim_stats.stage_counts[stage];
+  if (instr.is_wp) {
+    ++wrong_path;
+  } else {
+    ++correct_path;
+  }
+}
+
 namespace
 {
 void do_stack_pointer_folding(ooo_model_instr& arch_instr)
@@ -160,6 +170,7 @@ void O3_CPU::direct_fdip()
 
     IFETCH_BUFFER.push_back(arch_instr.value());
     IFETCH_BUFFER.back().ready_time = current_time; // TODO: add a branch prediction latency???
+    count_stage("fetch", IFETCH_BUFFER.back());
 
     // consume BW
     instrs_bw.consume();
@@ -204,6 +215,7 @@ void O3_CPU::initialize_instruction()
     input_queue.pop_front();
 
     IFETCH_BUFFER.back().ready_time = current_time;
+    count_stage("fetch", IFETCH_BUFFER.back());
   }
 }
 
@@ -382,6 +394,8 @@ void O3_CPU::do_check_dib(ooo_model_instr& instr)
 
     // It can be acted on immediately
     instr.ready_time = current_time;
+
+    count_stage("dib_hit", instr);
   }
 
   instr.dib_checked = true;
@@ -544,6 +558,8 @@ long O3_CPU::decode_instruction()
     // Add to dispatch
     db_entry.ready_time = this->current_time + (this->is_warmup() ? champsim::chrono::clock::duration{} : this->DISPATCH_LATENCY);
 
+    this->count_stage("decode", db_entry);
+
     if constexpr (champsim::debug_print) {
       fmt::print("[DECODE] do_decode instr_id: {} time: {}\n", db_entry.instr_id, this->current_time.time_since_epoch() / this->clock_period);
     }
@@ -581,6 +597,7 @@ long O3_CPU::dispatch_instruction()
     ROB.push_back(std::move(DISPATCH_BUFFER.front()));
     DISPATCH_BUFFER.pop_front();
     do_memory_scheduling(ROB.back());
+    count_stage("dispatch", ROB.back());
 
     available_dispatch_bandwidth.consume();
     ROB.back().ready_time = current_time + (is_warmup() ? champsim::chrono::clock::duration{} : SCHEDULING_LATENCY);
@@ -627,6 +644,7 @@ void O3_CPU::do_scheduling(ooo_model_instr& instr)
   }
 
   instr.scheduled = true;
+  count_stage("schedule", instr);
 }
 
 long O3_CPU::execute_instruction()
@@ -650,6 +668,7 @@ void O3_CPU::do_execution(ooo_model_instr& instr)
 {
   instr.executed = true;
   instr.ready_time = current_time + (is_warmup() ? champsim::chrono::clock::duration{} : EXEC_LATENCY);
+  count_stage("execute", instr);
 
   // Mark LQ entries as ready to translate
   for (auto& lq_entry : LQ) {
@@ -802,6 +821,7 @@ void O3_CPU::do_complete_execution(ooo_model_instr& instr)
   }
 
   instr.completed = true;
+  count_stage("complete", instr);
 
   if (instr.branch_mispredicted) {
     //fetch_resume_time = current_time + BRANCH_MISPREDICT_PENALTY;
@@ -889,6 +909,7 @@ long O3_CPU::retire_rob()
     for (auto dreg : rob_it->destination_registers) {
       reg_allocator.retire_dest_register(dreg);
     }
+    count_stage("retire", *rob_it);
   }
 
   uint64_t cycles = current_time.time_since_epoch() / clock_period;

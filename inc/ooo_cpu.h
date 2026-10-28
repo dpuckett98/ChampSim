@@ -184,6 +184,7 @@ public:
   void do_predict_branch(ooo_model_instr& instr);
   void do_flush(ooo_model_instr& mispredicted_branch);
   void squash_pending_flush();
+  void count_stage(const std::string& stage, const ooo_model_instr& instr);
   void squash_younger_than(uint64_t instr_id);
   void do_check_dib(ooo_model_instr& instr);
   bool do_fetch_instruction(std::deque<ooo_model_instr>::iterator begin, std::deque<ooo_model_instr>::iterator end);

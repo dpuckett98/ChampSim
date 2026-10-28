@@ -11,5 +11,10 @@ cpu_stats operator-(cpu_stats lhs, cpu_stats rhs)
   lhs.total_branch_types -= rhs.total_branch_types;
   lhs.branch_type_misses -= rhs.branch_type_misses;
 
+  for (const auto& [stage, counts] : rhs.stage_counts) {
+    lhs.stage_counts[stage].first -= counts.first;
+    lhs.stage_counts[stage].second -= counts.second;
+  }
+
   return lhs;
 }
