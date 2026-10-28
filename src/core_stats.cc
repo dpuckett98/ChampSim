@@ -7,6 +7,8 @@ cpu_stats operator-(cpu_stats lhs, cpu_stats rhs)
   lhs.end_instrs -= rhs.end_instrs;
   lhs.end_cycles -= rhs.end_cycles;
   lhs.total_rob_occupancy_at_branch_mispredict -= rhs.total_rob_occupancy_at_branch_mispredict;
+  lhs.fdip_wp_cycles -= rhs.fdip_wp_cycles;
+  lhs.fdip_wp_stall_cycles -= rhs.fdip_wp_stall_cycles;
 
   lhs.total_branch_types -= rhs.total_branch_types;
   lhs.branch_type_misses -= rhs.branch_type_misses;

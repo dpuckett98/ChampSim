@@ -130,6 +130,13 @@ void do_stack_pointer_folding(ooo_model_instr& arch_instr)
 // 3. On WP & have run out of WP instrs. from trace (fetch_resume_time > current_time)
 void O3_CPU::direct_fdip()
 {
+  // states 2 and 3 are WP cycles; state 3 is a stall cycle (only running out of WP instrs. delays fetch while on the WP)
+  if (on_WP) {
+    ++sim_stats.fdip_wp_cycles;
+    if (current_time < fetch_resume_time)
+      ++sim_stats.fdip_wp_stall_cycles;
+  }
+
   // bandwidths: max # instrs, max # branches, max # taken branches
   champsim::bandwidth instrs_bw{
 	  std::min(FDIP_INSTR_WIDTH, champsim::bandwidth::maximum_type{static_cast<long>(IFETCH_BUFFER_SIZE - std::size(IFETCH_BUFFER))})};

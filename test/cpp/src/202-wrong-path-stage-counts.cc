@@ -99,6 +99,14 @@ SCENARIO("Correct-path and wrong-path instructions are counted at each pipeline 
         }
         CHECK(counts.at("retire").second == 0);
       }
+
+      THEN("FDIP spends cycles on the wrong path, and stalls once the wrong path runs out while the branch waits on the load")
+      {
+        CHECK(uut.sim_stats.fdip_wp_stall_cycles > 0);
+        CHECK(uut.sim_stats.fdip_wp_cycles > uut.sim_stats.fdip_wp_stall_cycles);
+        // the branch cannot resolve until the load returns, so FDIP is on the WP for at least the load latency
+        CHECK(uut.sim_stats.fdip_wp_cycles >= static_cast<uint64_t>(load_latency));
+      }
     }
   }
 }

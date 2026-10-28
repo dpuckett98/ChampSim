@@ -73,6 +73,9 @@ std::vector<std::string> champsim::modules::core_module::format_plaintext(const 
                               ::print_ratio(std::kilo::num * total_mispredictions, stats.instrs()),
                               ::print_ratio(stats.total_rob_occupancy_at_branch_mispredict, total_mispredictions)));
 
+  lines.push_back(fmt::format("{} FDIP wrong path cycles: {} stalled waiting for wrong path instrs.: {}", stats.name, stats.fdip_wp_cycles,
+                              stats.fdip_wp_stall_cycles));
+
   lines.emplace_back("Branch type MPKI");
   for (auto idx : types) {
     lines.push_back(fmt::format("{}: {}", branch_type_names.at(champsim::to_underlying(idx)),
@@ -99,7 +102,9 @@ void champsim::modules::core_module::format_json(const stats_type& stats, champs
 
   b.add("instructions", stats.instrs())
    .add("cycles", stats.cycles())
-   .add("Avg ROB occupancy at mispredict", std::ceil(stats.total_rob_occupancy_at_branch_mispredict) / std::ceil(total_mispredictions));
+   .add("Avg ROB occupancy at mispredict", std::ceil(stats.total_rob_occupancy_at_branch_mispredict) / std::ceil(total_mispredictions))
+   .add("fdip wrong path cycles", stats.fdip_wp_cycles)
+   .add("fdip wrong path stall cycles", stats.fdip_wp_stall_cycles);
 
   auto mpki = b.group("mispredict");
   for (auto type : types) {

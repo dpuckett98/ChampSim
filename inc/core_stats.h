@@ -17,6 +17,10 @@ struct cpu_stats {
   long long end_cycles = 0;
   uint64_t total_rob_occupancy_at_branch_mispredict = 0;
 
+  // cycles fdip spends on the wrong path, and the subset of those cycles it is stalled because the trace ran out of WP instrs.
+  uint64_t fdip_wp_cycles = 0;
+  uint64_t fdip_wp_stall_cycles = 0;
+
   champsim::stats::event_counter<branch_type> total_branch_types = {};
   champsim::stats::event_counter<branch_type> branch_type_misses = {};
 
