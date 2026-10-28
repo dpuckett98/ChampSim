@@ -1488,7 +1488,9 @@ class wrong_path_tracereader
 
       const auto retval = instr_buffer.front();
       instr_buffer.pop_front();
-      //cp_instruction_num++; TODO
+      // the buffer holds both CP and WP instrs.; only CP instrs. count towards the trace's total_target_instructions
+      if (!retval.is_wp)
+        cp_instruction_num++;
       return retval;
     }
 
