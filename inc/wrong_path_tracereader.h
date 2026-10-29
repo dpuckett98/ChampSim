@@ -819,6 +819,7 @@ class wrong_path_tracereader
     uint32_t previous_thread_id = 0;
     uint32_t previous_asid_index = 0;
     uint32_t seq_num = 0;
+    uint64_t num_iframes = 0; // Number of IFRAMEs seen so far, for error messages
     uint64_t cp_instruction_num = 0; // Counts the number of parsed correct path instructions
     std::set<uint64_t> valid_body_tags;
 
@@ -1393,6 +1394,20 @@ class wrong_path_tracereader
       return retval;
     }
 
+    // Thrown when an IFRAME value doesn't match the stored value. Carries the failing field so callers can add diagnostics
+    struct iframe_mismatch_error : std::runtime_error {
+      uint32_t template_id;
+      uint64_t ipos;
+      uint64_t fid;
+      iframe_mismatch_error(const std::string& what, const uint32_t tid, const uint64_t ip, const uint64_t f)
+          : std::runtime_error(what), template_id(tid), ipos(ip), fid(f)
+      {
+      }
+    };
+
+    // Low 64 bits of a 512-bit value, for printing
+    [[nodiscard]] static constexpr uint64_t bitset_low_bits(const std::bitset<512>& bits) { return (bits & std::bitset<512>(~uint64_t{0})).to_ullong(); }
+
     // pending_overlay, if given, holds values that take precedence over overlay_to_use (e.g. WP deltas that haven't been applied to overlay_to_use yet)
     // relative_to, if given, holds base values that the IFRAME values are relative to, i.e. the expected value is (stored value - base value). Fields missing
     // from relative_to are compared as absolute values
@@ -1424,10 +1439,16 @@ class wrong_path_tracereader
         if (base != nullptr)
           stored_value = add_bitset(stored_value, add_bitset(~(*base), std::bitset<512>(1))); // stored - base
 
-        if (stored_value != delta.delta)
-          throw std::runtime_error(
-              fmt::format("[ERROR] IFRAME validation failed! Delta value mismatch for key {} and FID {}{}\n\tExpected Value = {}\n\tStored Value = {}",
-                          key.format(), delta.fid, base != nullptr ? " (relative)" : "", delta.delta.to_string(), stored_value.to_string()));
+        if (stored_value != delta.delta) {
+          // Report the CP value too, if there is one, to help diagnose relative values
+          const std::bitset<512>* cp_value = lookup(overlay, key, delta.fid);
+          throw iframe_mismatch_error(
+              fmt::format("[ERROR] IFRAME validation failed! Delta value mismatch for key {} and FID {}{}\n\tExpected Value = {:#x}\n\tStored Value = {:#x}{}\n\tCP Value = {}",
+                          key.format(), delta.fid, base != nullptr ? " (relative)" : "", bitset_low_bits(delta.delta), bitset_low_bits(stored_value),
+                          base != nullptr ? fmt::format(" (absolute {:#x} - base {:#x})", bitset_low_bits(*stored), bitset_low_bits(*base)) : std::string{},
+                          cp_value != nullptr ? fmt::format("{:#x}", bitset_low_bits(*cp_value)) : std::string{"(none)"}),
+              template_id, delta.ipos, delta.fid);
+        }
       }
     }
 
@@ -1485,10 +1506,63 @@ class wrong_path_tracereader
       return pending;
     }
 
+    // Describes where a WP field's value comes from: its value before the current entry's WP chain, and each chain instance's delta to it
+    [[nodiscard]] std::string describe_wp_contributions(const uint32_t template_id, const uint64_t ipos, const uint64_t fid,
+                                                         const wp_chain_section& iframe_chain) const
+    {
+      const overlay_key key(template_id, ipos);
+      const auto value_in = [&](const OverlayType& o) -> std::string {
+        const auto key_iter = o.find(key);
+        if (key_iter == o.end() || key_iter->second.find(fid) == key_iter->second.end())
+          return "(none)";
+        return fmt::format("{:#x}", bitset_low_bits(key_iter->second.at(fid)));
+      };
+
+      std::string retval = fmt::format("\tContributions to template {} ipos {} FID {}:\n\t\tWP overlay value before chain = {}\n\t\tCP value = {}", template_id,
+                                       ipos, fid, wp_state ? value_in(wp_state->overlay) : std::string{"(no WP state)"}, value_in(overlay));
+      if (!last_body_entry.has_value() || !last_body_entry->wp_chain.has_value())
+        return retval + "\n\t\t(no entry WP chain)";
+
+      const wp_chain_section& entry_chain = last_body_entry->wp_chain.value();
+      if (entry_chain.template_ids != iframe_chain.template_ids)
+        retval += fmt::format("\n\t\tNOTE: entry chain templates {} differ from IFRAME chain templates", entry_chain.template_ids);
+      if (last_body_entry->wp_deltas_added)
+        retval += "\n\t\tNOTE: entry WP deltas already applied to the WP overlay";
+
+      for (std::size_t j = 0; j < entry_chain.num_wp; j++) {
+        if (entry_chain.template_ids[j] != template_id)
+          continue;
+        std::string contribution = "no delta";
+        for (const auto& delta : entry_chain.wp_deltas[j].records)
+          if (delta.ipos == ipos && delta.fid == fid)
+            contribution = fmt::format("delta {:#x}", bitset_low_bits(delta.delta));
+        retval += fmt::format("\n\t\tEntry chain index {}: {}", j, contribution);
+      }
+      for (std::size_t j = 0; j < iframe_chain.num_wp; j++) {
+        if (iframe_chain.template_ids[j] != template_id)
+          continue;
+        std::string value = "no value";
+        for (const auto& delta : iframe_chain.wp_deltas[j].records)
+          if (delta.ipos == ipos && delta.fid == fid)
+            value = fmt::format("{:#x}", bitset_low_bits(delta.delta));
+        retval += fmt::format("\n\t\tIFRAME chain index {}: {}", j, value);
+      }
+      return retval;
+    }
+
     constexpr void handle_iframe()
     {
+      num_iframes++;
+      const auto with_context = [&](const std::runtime_error& e, const std::string& where) {
+        return std::runtime_error(fmt::format("{}\n\tIFRAME #{} at seq_num {}, CP template {}, {}", e.what(), num_iframes - 1, seq_num, previous_template_id, where));
+      };
+
       delta_section cp_delta = read_cp_delta_section();
-      validate_overlay(overlay, cp_delta, previous_template_id);
+      try {
+        validate_overlay(overlay, cp_delta, previous_template_id);
+      } catch (const std::runtime_error& e) {
+        throw with_context(e, "CP validation");
+      }
 
       if (header.prolog.fixed_size.flags & header.ids.at("header_flag").left.at("CST_FLAG_WP")) {
         wp_chain_section wp_chain = read_wp_chain_section();
@@ -1518,7 +1592,14 @@ class wrong_path_tracereader
             else if (current_template_id == previous_template_id)
               relative_to = &overlay;
 
-            validate_overlay(wp_state.value().overlay, wp_chain.wp_deltas[i], current_template_id, &pending, relative_to);
+            const std::string where = fmt::format("WP validation of chain index {} of {} (template IDs: {})", i, num_entries, wp_chain.template_ids);
+            try {
+              validate_overlay(wp_state.value().overlay, wp_chain.wp_deltas[i], current_template_id, &pending, relative_to);
+            } catch (const iframe_mismatch_error& e) {
+              throw with_context(e, where + "\n" + describe_wp_contributions(e.template_id, e.ipos, e.fid, wp_chain));
+            } catch (const std::runtime_error& e) {
+              throw with_context(e, where);
+            }
             processed_templates.insert(current_template_id); // Mark this template as done
           }
         }
