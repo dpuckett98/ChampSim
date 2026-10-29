@@ -1394,8 +1394,10 @@ class wrong_path_tracereader
     }
 
     // pending_overlay, if given, holds values that take precedence over overlay_to_use (e.g. WP deltas that haven't been applied to overlay_to_use yet)
+    // relative_to, if given, holds base values that the IFRAME values are relative to, i.e. the expected value is (stored value - base value). Fields missing
+    // from relative_to are compared as absolute values
     constexpr void validate_overlay(const OverlayType& overlay_to_use, const delta_section& delta_sec, const uint32_t template_id,
-                                    const OverlayType* pending_overlay = nullptr) const
+                                    const OverlayType* pending_overlay = nullptr, const OverlayType* relative_to = nullptr) const
     {
       if (header.templates.find(template_id) == header.templates.end())
         throw std::runtime_error(fmt::format("[ERROR] Template #{} does not exist in the header. Validate failed!", template_id));
@@ -1416,26 +1418,36 @@ class wrong_path_tracereader
           stored = lookup(overlay_to_use, key, delta.fid);
         if (stored == nullptr)
           throw std::runtime_error(fmt::format("[ERROR] IFRAME validation failed! Overlay key {} not found in the overlay map", key.format()));
-        if (*stored != delta.delta)
+
+        std::bitset<512> stored_value = *stored;
+        const std::bitset<512>* base = relative_to != nullptr ? lookup(*relative_to, key, delta.fid) : nullptr;
+        if (base != nullptr)
+          stored_value = add_bitset(stored_value, add_bitset(~(*base), std::bitset<512>(1))); // stored - base
+
+        if (stored_value != delta.delta)
           throw std::runtime_error(
-              fmt::format("[ERROR] IFRAME validation failed! Delta value mismatch for key {} and FID {}\n\tExpected Value = {}\n\tStored Value = {}",
-                          key.format(), delta.fid, delta.delta.to_string(), stored->to_string()));
+              fmt::format("[ERROR] IFRAME validation failed! Delta value mismatch for key {} and FID {}{}\n\tExpected Value = {}\n\tStored Value = {}",
+                          key.format(), delta.fid, base != nullptr ? " (relative)" : "", delta.delta.to_string(), stored_value.to_string()));
       }
     }
 
     // Returns the values the WP overlay will hold once the current entry's WP deltas are applied, without modifying the WP overlay. Only the fields touched by
     // those deltas are included. The IFRAME following an entry reflects the state after that entry's WP chain, but the chain's deltas are only applied to the
     // WP overlay later (when the WP is started, or skipped at the next CP read)
-    [[nodiscard]] constexpr OverlayType pending_wp_overlay()
+    // If previous_occurrence is given, it's filled with, for each template that appears more than once in the chain, the values its fields held right before
+    // its last occurrence, i.e. its values as of its previous occurrence
+    [[nodiscard]] constexpr OverlayType pending_wp_overlay(OverlayType* previous_occurrence = nullptr)
     {
       OverlayType pending;
       if (!wp_enabled || !last_body_entry.has_value() || last_body_entry->wp_deltas_added || !last_body_entry->wp_chain.has_value())
         return pending;
 
       const wp_chain_section& wp_chain = last_body_entry->wp_chain.value();
+      std::set<uint32_t> seen_templates;
       for (std::size_t i = 0; i < wp_chain.num_wp; i++) {
         const uint32_t template_id = wp_chain.template_ids[i];
         const auto& deltas = wp_chain.wp_deltas[i];
+        const bool repeated = !seen_templates.insert(template_id).second;
 
         // seed with the current WP overlay values; apply_deltas_to_overlay falls back to the CP overlay for fields the WP overlay doesn't hold
         if (wp_state) {
@@ -1447,6 +1459,23 @@ class wrong_path_tracereader
             const auto fid_iter = key_iter->second.find(delta.fid);
             if (fid_iter != key_iter->second.end())
               pending[key][delta.fid] = fid_iter->second;
+          }
+        }
+
+        // Snapshot this template's values before this occurrence's deltas are applied. Later occurrences overwrite earlier snapshots, so what's left is the
+        // snapshot from before the last occurrence
+        if (previous_occurrence != nullptr && repeated) {
+          for (const auto& [key, fields] : pending)
+            if (key.template_id == template_id)
+              for (const auto& [fid, value] : fields)
+                (*previous_occurrence)[key][fid] = value;
+          for (const auto& delta : deltas.records) {
+            const overlay_key key(template_id, delta.ipos);
+            if (pending.find(key) != pending.end() && pending.at(key).find(delta.fid) != pending.at(key).end())
+              continue;
+            const auto cp_key_iter = overlay.find(key);
+            const bool in_cp = cp_key_iter != overlay.end() && cp_key_iter->second.find(delta.fid) != cp_key_iter->second.end();
+            (*previous_occurrence)[key][delta.fid] = in_cp ? cp_key_iter->second.at(delta.fid) : std::bitset<512>(0);
           }
         }
 
@@ -1466,7 +1495,12 @@ class wrong_path_tracereader
 
         if (wp_state) // Verify WP only when executing WP
         {
-          const OverlayType pending = pending_wp_overlay();
+          OverlayType previous_occurrence;
+          const OverlayType pending = pending_wp_overlay(&previous_occurrence);
+          std::set<uint32_t> repeated_templates;
+          for (const auto& [key, fields] : previous_occurrence)
+            repeated_templates.insert(key.template_id);
+
           std::set<uint32_t> processed_templates; // Tracks the template IDs for the templates that have been verified
           const int64_t num_entries = static_cast<int64_t>(wp_chain.num_wp);
           uint32_t current_template_id = previous_template_id;
@@ -1476,7 +1510,15 @@ class wrong_path_tracereader
             if (processed_templates.find(current_template_id) != processed_templates.end())
               continue; // Only validate the last instance of each template
 
-            validate_overlay(wp_state.value().overlay, wp_chain.wp_deltas[i], current_template_id, &pending);
+            // The IFRAME stores a WP template's values relative to its previous occurrence: an earlier instance in the WP chain if there is one, otherwise the
+            // CP execution if the WP template is the same as the CP template
+            const OverlayType* relative_to = nullptr;
+            if (repeated_templates.find(current_template_id) != repeated_templates.end())
+              relative_to = &previous_occurrence;
+            else if (current_template_id == previous_template_id)
+              relative_to = &overlay;
+
+            validate_overlay(wp_state.value().overlay, wp_chain.wp_deltas[i], current_template_id, &pending, relative_to);
             processed_templates.insert(current_template_id); // Mark this template as done
           }
         }
