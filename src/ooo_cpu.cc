@@ -680,21 +680,25 @@ long O3_CPU::execute_instruction()
 
 void O3_CPU::do_execution(ooo_model_instr& instr)
 {
+  // Wrong-path faulting instructions never complete; they wait in the ROB until squashed
+  const auto exec_ready_time = instr.is_wp_fault ? champsim::chrono::clock::time_point::max()
+                                                 : current_time + (is_warmup() ? champsim::chrono::clock::duration{} : EXEC_LATENCY);
+
   instr.executed = true;
-  instr.ready_time = current_time + (is_warmup() ? champsim::chrono::clock::duration{} : EXEC_LATENCY);
+  instr.ready_time = exec_ready_time;
   count_stage("execute", instr);
 
   // Mark LQ entries as ready to translate
   for (auto& lq_entry : LQ) {
     if (lq_entry.has_value() && lq_entry->instr_id == instr.instr_id) {
-      lq_entry->ready_time = current_time + (is_warmup() ? champsim::chrono::clock::duration{} : EXEC_LATENCY);
+      lq_entry->ready_time = exec_ready_time;
     }
   }
 
   // Mark SQ entries as ready to translate
   for (auto& sq_entry : SQ) {
     if (sq_entry.instr_id == instr.instr_id) {
-      sq_entry.ready_time = current_time + (is_warmup() ? champsim::chrono::clock::duration{} : EXEC_LATENCY);
+      sq_entry.ready_time = exec_ready_time;
     }
   }
 
