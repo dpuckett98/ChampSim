@@ -120,6 +120,7 @@ private:
   void finish_translation(const response_type& packet);
 
   void issue_translation(tag_lookup_type& q_entry) const;
+  void translate_immediately(tag_lookup_type& q_entry);
 
 public:
   using BLOCK = champsim::cache_block;
@@ -169,6 +170,8 @@ public:
   bool match_offset_bits;
   bool virtual_prefetch;
   bool always_hit;
+  bool auto_translate; // translate directly through vmem, bypassing the TLBs and page table walker
+  champsim::modules::vmem_module* vmem;
   std::vector<access_type> pref_activate_mask;
 
   using stats_type = cache_stats;
@@ -271,8 +274,11 @@ public:
         lower_translate(builder.get_parameter<champsim::modules::channel_module*>("lower_translate")),
         NAME(builder.get_name()), NUM_SET(builder.get_parameter<uint32_t>("num_sets")), NUM_WAY(builder.get_parameter<uint32_t>("num_ways")), MSHR_SIZE(builder.get_parameter<uint32_t>("mshr_size")), PQ_SIZE(builder.get_parameter<std::size_t>("pq_size")), HIT_LATENCY(builder.get_parameter<uint64_t>("hit_latency") * builder.get_parameter<champsim::chrono::picoseconds>("clock_period")),
         FILL_LATENCY(builder.get_parameter<uint64_t>("fill_latency") * builder.get_parameter<champsim::chrono::picoseconds>("clock_period")), OFFSET_BITS(builder.get_parameter<champsim::data::bits>("offset_bits")), MAX_TAG(builder.get_parameter<champsim::bandwidth::maximum_type>("max_tag_bandwidth")), MAX_FILL(builder.get_parameter<champsim::bandwidth::maximum_type>("max_fill_bandwidth")),
-        prefetch_as_load(builder.get_parameter<bool>("prefetch_as_load")), match_offset_bits(builder.get_parameter<bool>("match_offset_bits")), virtual_prefetch(builder.get_parameter<bool>("virtual_prefetch")), always_hit(builder.get_parameter<bool>("always_hit", true, false)), pref_activate_mask(builder.get_parameter<std::vector<access_type>>("pref_activate_mask"))
+        prefetch_as_load(builder.get_parameter<bool>("prefetch_as_load")), match_offset_bits(builder.get_parameter<bool>("match_offset_bits")), virtual_prefetch(builder.get_parameter<bool>("virtual_prefetch")), always_hit(builder.get_parameter<bool>("always_hit", true, false)), auto_translate(builder.get_parameter<bool>("auto_translate", true, false)), vmem(builder.get_parameter<champsim::modules::vmem_module*>("vmem", true, nullptr)), pref_activate_mask(builder.get_parameter<std::vector<access_type>>("pref_activate_mask"))
   {
+    if (auto_translate && vmem == nullptr)
+      throw std::invalid_argument(NAME + ": auto_translate requires a \"vmem\" parameter");
+
     // Construct prefetcher submodules
     for (const auto& sub : builder.get_submodules("prefetcher", true))
       pref_module_pimpl.push_back(champsim::modules::prefetcher::create_instance(sub, static_cast<champsim::modules::cache_module*>(this)));

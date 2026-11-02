@@ -438,8 +438,14 @@ long CACHE::operate()
   initiate_tag_bw.consume(pq_bandwidth_consumed);
 
   // Issue translations
-  std::for_each(std::begin(inflight_tag_check), std::end(inflight_tag_check), [this](auto& x) { this->issue_translation(x); });
-  std::for_each(std::begin(translation_stash), std::end(translation_stash), [this](auto& x) { this->issue_translation(x); });
+  auto do_translation = [this](auto& x) {
+    if (this->auto_translate)
+      this->translate_immediately(x);
+    else
+      this->issue_translation(x);
+  };
+  std::for_each(std::begin(inflight_tag_check), std::end(inflight_tag_check), do_translation);
+  std::for_each(std::begin(translation_stash), std::end(translation_stash), do_translation);
 
   // Find entries that would be ready except that they have not finished translation, move them to the stash
   auto [last_not_missed, stash_end] = champsim::extract_if(std::begin(inflight_tag_check), std::end(inflight_tag_check), std::back_inserter(translation_stash),
@@ -607,6 +613,26 @@ void CACHE::finish_translation(const response_type& packet)
     if (matches_vpage(entry)) {
       mark_translated(entry);
     }
+  }
+}
+
+void CACHE::translate_immediately(tag_lookup_type& q_entry)
+{
+  if (q_entry.is_translated)
+    return;
+
+  // Look up the physical page directly in virtual memory, skipping the TLBs and the page table walk.
+  // The page-fault penalty returned by va_to_pa is intentionally ignored.
+  auto [p_page, penalty] = vmem->va_to_pa(q_entry.cpu, champsim::page_number{q_entry.v_address});
+  (void)penalty;
+
+  [[maybe_unused]] auto old_address = q_entry.address;
+  q_entry.address = champsim::address{champsim::splice(p_page, champsim::page_offset{q_entry.v_address})};
+  q_entry.is_translated = true;
+
+  if constexpr (champsim::debug_print) {
+    fmt::print("[{}_TRANSLATE] translate_immediately old: {} paddr: {} vaddr: {} type: {} cycle: {}\n", NAME, old_address, q_entry.address, q_entry.v_address,
+               access_type_names.at(champsim::to_underlying(q_entry.type)), current_time.time_since_epoch() / clock_period);
   }
 }
 
