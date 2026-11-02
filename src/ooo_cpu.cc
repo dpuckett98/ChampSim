@@ -165,11 +165,11 @@ void O3_CPU::direct_fdip()
     if (!arch_instr.has_value()) {
       stop_fetch = true;
       fetch_resume_time = champsim::chrono::clock::time_point::max();
-      fmt::print("Halting fetch because we don't have WP instrs.\n");
+      //fmt::print("Halting fetch because we don't have WP instrs.\n");
       break;
     }
 
-    fmt::print("Cycle: {}, IP: {}, on WP: {}\n", current_time.time_since_epoch() / clock_period, arch_instr->ip, on_WP);
+    //fmt::print("Cycle: {}, IP: {}, on WP: {}\n", current_time.time_since_epoch() / clock_period, arch_instr->ip, on_WP);
 
     // fast warmup eliminates register dependencies between instructions branch predictor, cache contents, and prefetchers are still warmed up
     if (is_warmup()) {
@@ -206,7 +206,7 @@ void O3_CPU::direct_fdip()
           // if there wasn't another instr. along the WP trace, then stop fetch until branch misprediction is resolved
 	  stop_fetch = true;
 	  fetch_resume_time = champsim::chrono::clock::time_point::max();
-	  fmt::print("Halting fetch because we don't have WP instrs (after peeking next instr.).\n");
+	  //fmt::print("Halting fetch because we don't have WP instrs (after peeking next instr.).\n");
 	}
       }
     }
@@ -274,7 +274,7 @@ void O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
         fmt::print("[BRANCH] instr_id: {} ip: {} taken: {}\n", arch_instr.instr_id, arch_instr.ip, arch_instr.branch_taken);
       }
 
-      fmt::print("Predicting branch ip: {}, taken: {}, target: {} predicted taken: {}, predicted target: {}\n", arch_instr.ip, arch_instr.branch_taken, arch_instr.branch_target, arch_instr.branch_prediction, predicted_branch_target);
+      //fmt::print("Predicting branch ip: {}, taken: {}, target: {} predicted taken: {}, predicted target: {}\n", arch_instr.ip, arch_instr.branch_taken, arch_instr.branch_target, arch_instr.branch_prediction, predicted_branch_target);
 
       bool mispredicted = workload_source_pimpl[0]->steer(arch_instr.branch_prediction, predicted_branch_target.to<uint64_t>()); // for now, assuming that BTB perfectly identifies when instrs. are branches
 
@@ -289,7 +289,7 @@ void O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
         sim_stats.branch_type_misses.increment(arch_instr.branch);
         arch_instr.branch_mispredicted = true;
 	on_WP = true; // TODO: this assumes that the trace will output WP instrs; currently lacking support for trace only passing CP instrs
-	fmt::print("Switching to WP at instr IP {}!\n", arch_instr.ip);
+	//fmt::print("Switching to WP at instr IP {}!\n", arch_instr.ip);
 	/*if (!is_warmup()) {
           fetch_resume_time = champsim::chrono::clock::time_point::max();
           stop_fetch = true;
@@ -311,7 +311,7 @@ void O3_CPU::do_flush(ooo_model_instr& mispredicted_branch)
   workload_source_pimpl[0]->flush();
   on_WP = false;
   fdip_peeked_instr.reset(); // the peeked instr. is on the WP; don't let it leak onto the CP after the flush
-  fmt::print("[FLUSH] instr_id: {} ip: {} cycle: {}\n", mispredicted_branch.instr_id, mispredicted_branch.ip, current_time.time_since_epoch() / clock_period);
+  //fmt::print("[FLUSH] instr_id: {} ip: {} cycle: {}\n", mispredicted_branch.instr_id, mispredicted_branch.ip, current_time.time_since_epoch() / clock_period);
 
   // do_flush is called while iterating over pipeline structures, so defer the squash until the calling stage finishes.
   // instr_ids are assigned in fetch order, so every instr. younger than the branch (i.e., on the WP) has a larger instr_id.

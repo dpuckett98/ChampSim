@@ -477,18 +477,18 @@ class wrong_path_tracereader
       const uint64_t initial_bytes_read = compressed_header_stream.total_bytes_read;
 
       const uint64_t n_maps = compressed_header_stream.parse_uleb();
-      fmt::print(stderr, "Reading {} maps of size {} bytes\n", n_maps, encoding_size);
+      //fmt::print(stderr, "Reading {} maps of size {} bytes\n", n_maps, encoding_size);
       for (uint64_t i = 0; i < n_maps; i++) {
         const std::string map_name = compressed_header_stream.parse_string();
         const uint64_t n_entries = compressed_header_stream.parse_uleb();
 
-        fmt::print(stderr, "Reading {} values from {}\n", n_entries, map_name);
+        //fmt::print(stderr, "Reading {} values from {}\n", n_entries, map_name);
         for (uint64_t j = 0; j < n_entries; j++) {
           const uint64_t value = compressed_header_stream.parse_uleb();
           const std::string name = compressed_header_stream.parse_string();
           ids[std::move(map_name)].insert(std::move(ids_value_type(std::move(name), value)));
 
-          fmt::print(stderr, "[{}] {}->{}\n", map_name, value, name);
+          //fmt::print(stderr, "[{}] {}->{}\n", map_name, value, name);
         }
       }
 
@@ -543,14 +543,14 @@ class wrong_path_tracereader
           dep.store_addr_dep.emplace_back(compressed_header_stream.parse_uleb());
       }
 
-      fmt::print(stderr,
+      /*fmt::print(stderr,
                  "New Dependency Block\n"
                  "\tFlags = {:#010b}\n"
                  "\tDestination Dependencies = {::#x}\n"
                  "\tStore Data Dependencies = {::#x}\n"
                  "\tLoad Address Dependencies = {::#x}\n"
                  "\tStore Address Dependencies = {::#x}\n",
-                 dep.dep_block_flags, dep.dst_dep, dep.store_data_dep, dep.load_addr_dep, dep.store_addr_dep);
+                 dep.dep_block_flags, dep.dst_dep, dep.store_data_dep, dep.load_addr_dep, dep.store_addr_dep);*/
 
       return dep;
     }
@@ -575,7 +575,7 @@ class wrong_path_tracereader
       instr.instr_size = static_cast<uint8_t>(compressed_header_stream.read());
       instr.instr_bytes = compressed_header_stream.read_bytes(static_cast<std::size_t>(instr.instr_size));
 
-      fmt::print(stderr,
+      /*fmt::print(stderr,
                  "New Instruction:\n"
                  "\tPC Delta = {}\n"
                  "\tOpcode = {}\n"
@@ -592,7 +592,7 @@ class wrong_path_tracereader
                  instr.pc_delta, instr.opcode, instr.branch_type, instr.flags, instr.n_src, instr.n_dst, instr.src_regs, instr.dst_regs, instr.max_dep_loads,
                  instr.max_dep_stores, instr.instr_size, instr.instr_bytes);
       if (instr.immidiate)
-        fmt::print(stderr, "\tImmediate = {:#x}\n", instr.immidiate.value());
+        fmt::print(stderr, "\tImmediate = {:#x}\n", instr.immidiate.value());*/
 
       if (instr.flags & ids["insn_flag"].left.at("CST_INSN_FLAG_HAS_DEP_BLOCK"))
         instr.dependency = parse_dependency(instr.n_dst, instr.max_dep_stores, instr.max_dep_loads);
@@ -633,7 +633,7 @@ class wrong_path_tracereader
         }
       }
 
-      fmt::print(stderr,
+      /*fmt::print(stderr,
                  "Profile Block detected\n"
                  "\tExec CP {}\n"
                  "\tExec WP {}\n"
@@ -649,7 +649,7 @@ class wrong_path_tracereader
                  "\tLo Addr WP: {::#x}\n"
                  "\tHi Addr WP: {::#x}\n",
                  pf.exec_cp, pf.exec_wp, pf.taken_cp, pf.nottaken_cp, pf.taken_wp, pf.nottaken_wp, pf.memops_cp, pf.memops_wp, pf.pat_flags, pf.lo_addr_cp,
-                 pf.hi_addr_cp, pf.lo_addr_wp, pf.hi_addr_wp);
+                 pf.hi_addr_cp, pf.lo_addr_wp, pf.hi_addr_wp);*/
 
       return pf;
     }
@@ -669,12 +669,12 @@ class wrong_path_tracereader
         templates[template_id].targets.emplace_back(compressed_header_stream.parse_uleb());
       templates[template_id].symbol_name = compressed_header_stream.parse_string();
 
-      fmt::print(stderr,
+      /*fmt::print(stderr,
                  "Template {}:\n\tStart PC = {:#x}\n\tNumber of Instructions = {}\n\t"
                  "Fall Through PC = {:#x}\n\tSymbol Name = {}\n\tNumber of Targets = {}\n\t"
                  "Targets = {::#x}\n",
                  template_id, templates[template_id].start_pc, templates[template_id].num_instr, templates[template_id].fall_through_pc,
-                 templates[template_id].symbol_name, templates[template_id].num_targets, templates[template_id].targets);
+                 templates[template_id].symbol_name, templates[template_id].num_targets, templates[template_id].targets);*/
 
       for (uint64_t i = 0; i < templates[template_id].num_instr; i++)
         templates[template_id].instructions.emplace_back(parse_instruction());
@@ -690,7 +690,7 @@ class wrong_path_tracereader
     constexpr void parse_templates()
     {
       const uint64_t num_templates = compressed_header_stream.parse_uleb();
-      fmt::print(stderr, "Reading {} templates\n", num_templates);
+      //fmt::print(stderr, "Reading {} templates\n", num_templates);
 
       for (uint64_t i = 0; i < num_templates; i++)
         parse_one_template();
@@ -866,7 +866,7 @@ class wrong_path_tracereader
       const auto buffer = compressed_body_stream.read_bytes(sizeof(trace_magic_bytes));
       std::memcpy(&trace_magic_bytes, std::data(buffer), sizeof(trace_magic_bytes));
 
-      fmt::print(stderr, "Body Magic Bytes = {:X}\n", trace_magic_bytes);
+      //fmt::print(stderr, "Body Magic Bytes = {:X}\n", trace_magic_bytes);
 
       // Verify integrity
       using namespace wrong_path_trace_constants;
@@ -1044,8 +1044,8 @@ class wrong_path_tracereader
 
       next_pc = branch_target;
 
-      if (is_branch)
-        fmt::print(stderr, "[INFO] {:x}: is_branch = {}, next_pc = {:x}\n", instruction_pc, is_branch, next_pc);
+      /*if (is_branch)
+        fmt::print(stderr, "[INFO] {:x}: is_branch = {}, next_pc = {:x}\n", instruction_pc, is_branch, next_pc);*/
 
       // Construct an ooo_model_instr and return
       return ooo_model_instr(instruction_pc, instr_size, is_branch, branch_taken, champsim::address{branch_target}, cpu, br_type, instruction_template.dst_regs, instruction_template.src_regs,
@@ -1083,7 +1083,7 @@ class wrong_path_tracereader
     template <std::size_t N = 128>
     [[nodiscard]] constexpr std::optional<std::vector<ooo_model_instr>> continue_wp() const
     {
-      fmt::print(stderr, "[INFO] Ran out of WP instrs\n");
+      //fmt::print(stderr, "[INFO] Ran out of WP instrs\n");
       return std::nullopt;
 
       std::vector<ooo_model_instr> retvec;
@@ -1160,20 +1160,20 @@ class wrong_path_tracereader
             retvec.back().set_wp_event_flags(is_faulting); // Mark as wrong path faulting instruction
           }
         }
-        fmt::print(stderr, "[INFO] Generated instructions for {}, size = {}\n", template_id, retvec.size());
+        //fmt::print(stderr, "[INFO] Generated instructions for {}, size = {}\n", template_id, retvec.size());
       }
 
-      fmt::print(stderr, "[INFO] Generated {} wrong path instructions\n", retvec.size());
+      //fmt::print(stderr, "[INFO] Generated {} wrong path instructions\n", retvec.size());
       for (const auto& instr : retvec)
-        fmt::print(stderr, "[INFO] {:x}: branch = {}, taken = {}, dst regs = {}, src regs = {}, is_wp = {}, is_wp_fault = {}\n", instr.ip.to<uint64_t>(),
-                   instr.is_branch, instr.branch_taken, instr.destination_registers, instr.source_registers, instr.is_wp, instr.is_wp_fault);
+        //fmt::print(stderr, "[INFO] {:x}: branch = {}, taken = {}, dst regs = {}, src regs = {}, is_wp = {}, is_wp_fault = {}\n", instr.ip.to<uint64_t>(),
+                   //instr.is_branch, instr.branch_taken, instr.destination_registers, instr.source_registers, instr.is_wp, instr.is_wp_fault);
 
       return retvec;
     }
 
     [[nodiscard]] constexpr std::optional<std::vector<ooo_model_instr>> start_wp(body_entry& entry)
     {
-      fmt::print(stderr, "[INFO] Starting wrong path from template {}\n", entry.template_id);
+      //fmt::print(stderr, "[INFO] Starting wrong path from template {}\n", entry.template_id);
 
       if (!wp_enabled)
 	return std::nullopt;
@@ -1782,14 +1782,14 @@ class wrong_path_tracereader
               const auto& deltas = last_body_entry->wp_chain->wp_deltas[i];
               const auto& bb_template = header.templates.at(template_id);
               const auto& instructions = bb_template.instructions;
-              fmt::print(stderr, "[INFO] read\n");
+              //fmt::print(stderr, "[INFO] read\n");
               if (!wp_state) {
                 wp_state = std::make_optional<wp_state_type>();
                 wp_state.value().overlay = {}; //overlay; // Fork off a copy of the current overlay
                 wp_state.value().regfile = regfile; // Fork off a copy of the current regfile
               }
               apply_deltas_to_overlay(deltas, wp_state.value().overlay, std::ref(overlay), template_id, instructions.size());
-              fmt::print(stderr, "[INFO] Skipping WP, so applied deltas for {}; # instrs = {}, # deltas = {}\n", template_id, instructions.size(), deltas.records.size());
+              //fmt::print(stderr, "[INFO] Skipping WP, so applied deltas for {}; # instrs = {}, # deltas = {}\n", template_id, instructions.size(), deltas.records.size());
             }
           }
           last_body_entry.emplace(handle_entry());
@@ -1805,7 +1805,7 @@ class wrong_path_tracereader
 	if (!retvec.has_value())
           return std::nullopt;
 	instr_buffer.insert(std::end(instr_buffer), std::make_move_iterator(std::begin(*retvec)), std::make_move_iterator(std::end(*retvec)));
-	fmt::print(stderr, "Finished adding {} new instrs\n", (*retvec).size());
+	//fmt::print(stderr, "Finished adding {} new instrs\n", (*retvec).size());
       }
 
       // Return the next instruction
@@ -1822,8 +1822,8 @@ class wrong_path_tracereader
       const bool comsumed_expected_num_cp_instructions = header.prolog.total_target_instructions <= cp_instruction_num;
       const bool unbounded_trace = header.prolog.total_target_instructions == 0; // The trace was collected until the application exited
 
-      if (retval)
-        fmt::print(stderr, "Cp instructions = {}\n", cp_instruction_num);
+      /*if (retval)
+        fmt::print(stderr, "Cp instructions = {}\n", cp_instruction_num);*/
 
       if (retval and !unbounded_trace and !comsumed_expected_num_cp_instructions)
         throw std::runtime_error(fmt::format(
@@ -1846,12 +1846,12 @@ public:
 
     const auto instr = body_stream->next_instr();
 
-    if (instr.has_value()) {
+    /*if (instr.has_value()) {
       fmt::print(stderr, "{:x}: branch = {}, taken = {}, dst regs = {}, src regs = {}\n", instr->ip.to<uint64_t>(), instr->is_branch, instr->branch_taken,
                instr->destination_registers, instr->source_registers);
     } else {
       fmt::print(stderr, "No instr. available\n");
-    }
+    }*/
 
     return instr;
   }
@@ -1974,7 +1974,7 @@ constexpr void wrong_path_tracereader::verify_trace_file_type() const
     extract_dir = base_extract_dir;
     extract_dir += std::to_string(suffix);
   }
-  fmt::print(stderr, "New dir: {}\n", extract_dir.string());
+  //fmt::print(stderr, "New dir: {}\n", extract_dir.string());
 
   return extract_dir;
 }
@@ -1983,7 +1983,7 @@ void wrong_path_tracereader::extract_trace() const
 {
   const auto open = [] [[nodiscard]] (const char* file_name) constexpr -> TAR* {
     TAR* handle = nullptr;
-    const int retval = tar_open(&handle, file_name, nullptr, O_RDONLY, 0, TAR_GNU);
+    const int retval = tar_open(&handle, file_name, nullptr, NULL, 0, TAR_GNU);
     if (retval != 0)
       throw std::runtime_error(fmt::format("[ERROR] Can't open trace: {}. Exiting...", file_name));
     return handle;
