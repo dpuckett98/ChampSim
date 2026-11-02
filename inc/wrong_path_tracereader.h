@@ -1728,7 +1728,7 @@ class wrong_path_tracereader
       if (instr_buffer.size() != 0) {
         throw std::runtime_error(fmt::format("[ERROR] steering, but instr_buffer isn't empty {}", instr_buffer.size()));
       }
-      if (prev_branch_taken && !taken) {
+      if (prev_branch_taken != taken) {
         on_wp = true;
         return true;
       }
