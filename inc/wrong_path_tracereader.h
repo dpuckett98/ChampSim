@@ -1037,7 +1037,7 @@ class wrong_path_tracereader
         else if (branch_type_name == "BRANCH_SYSCALL_TYPE")
           br_type = branch_type::BRANCH_DIRECT_CALL;
         else if (branch_type_name == "BRANCH_COND_DIRECT")
-          br_type = branch_type::BRANCH_DIRECT_JUMP;
+          br_type = branch_type::BRANCH_CONDITIONAL;
         else if (branch_type_name == "BRANCH_REP")
           br_type = branch_type::BRANCH_OTHER;
       }
