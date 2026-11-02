@@ -263,6 +263,21 @@ void O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
   } else {
     // handle branch prediction for all instructions as at this point we do not know if the instruction is a branch
     sim_stats.total_branch_types.increment(arch_instr.branch);
+
+    if (perfect_branch_prediction) {
+      // Skip the BTB and branch predictor: predict the actual outcome of every branch
+      arch_instr.branch_prediction = arch_instr.branch_taken;
+      if (arch_instr.is_branch) {
+        const auto predicted_branch_target = arch_instr.branch_taken ? arch_instr.branch_target : champsim::address{};
+        if (workload_source_pimpl[0]->steer(arch_instr.branch_prediction, predicted_branch_target.to<uint64_t>()))
+          throw std::runtime_error(fmt::format("[ERROR] perfect branch prediction mispredicted the branch at ip {}", arch_instr.ip));
+
+        // call code prefetcher every time a branch is predicted
+        l1i->impl_prefetcher_branch_operate(arch_instr.ip, arch_instr.branch, predicted_branch_target);
+      }
+      return;
+    }
+
     auto [predicted_branch_target, always_taken] = impl_btb_prediction(arch_instr.ip, arch_instr.branch);
     arch_instr.branch_prediction = impl_predict_branch(arch_instr.ip, predicted_branch_target, always_taken, arch_instr.branch) || always_taken;
     if (!arch_instr.branch_prediction) {
