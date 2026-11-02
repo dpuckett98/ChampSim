@@ -413,8 +413,8 @@ long O3_CPU::check_dib()
 void O3_CPU::do_check_dib(ooo_model_instr& instr)
 {
   // Check DIB to see if we recently fetched this line
-  auto dib_result = DIB.check_hit(instr.ip);
-  if (dib_result) {
+  const bool dib_hit = always_dib_hit || DIB.check_hit(instr.ip).has_value();
+  if (dib_hit) {
     // The cache line is in the L0, so we can mark this as complete
     instr.fetch_completed = true;
 
@@ -430,7 +430,7 @@ void O3_CPU::do_check_dib(ooo_model_instr& instr)
   instr.dib_checked = true;
 
   if constexpr (champsim::debug_print) {
-    fmt::print("[DIB] {} instr_id: {} ip: {} hit: {} cycle: {}\n", __func__, instr.instr_id, instr.ip, dib_result.has_value(),
+    fmt::print("[DIB] {} instr_id: {} ip: {} hit: {} cycle: {}\n", __func__, instr.instr_id, instr.ip, dib_hit,
                current_time.time_since_epoch() / clock_period);
   }
 }

@@ -140,6 +140,7 @@ public:
   champsim::chrono::clock::time_point fetch_resume_time{};
   bool on_WP = false;
   bool perfect_branch_prediction = false; // skip the BTB and branch predictor; every branch is predicted correctly
+  bool always_dib_hit = false;            // every instruction hits in the decoded instruction buffer
   std::optional<ooo_model_instr> fdip_peeked_instr;
   std::optional<uint64_t> pending_flush_id; // instr_id of the oldest mispredicted branch awaiting a squash of younger instrs.
 
@@ -247,6 +248,7 @@ public:
 	FDIP_TAKEN_BRANCH_WIDTH(builder.get_parameter<champsim::bandwidth::maximum_type>("fdip_taken_branch_width"))
   {
     perfect_branch_prediction = builder.get_parameter<bool>("perfect_branch_prediction", true, false);
+    always_dib_hit = builder.get_parameter<bool>("always_dib_hit", true, false);
 
     // Construct branch predictor submodules
     for (const auto& sub : builder.get_submodules("branch_predictor"))
