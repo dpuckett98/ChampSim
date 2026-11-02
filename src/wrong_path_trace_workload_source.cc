@@ -19,7 +19,8 @@ struct wrong_path_trace_workload_source : public champsim::modules::workload_sou
 
   explicit wrong_path_trace_workload_source(champsim::modules::ModuleBuilder builder)
       : reader_(get_wp_tracereader(builder.get_parameter<std::string>("trace_file"), builder.get_parameter<uint8_t>("cpu"),
-                                   builder.get_parameter<bool>("repeat", true, false), builder.get_parameter<bool>("wrong_path_enabled", true, false)))
+                                   builder.get_parameter<bool>("repeat", true, false), builder.get_parameter<bool>("wrong_path_enabled", true, false),
+                                   builder.get_parameter<uint64_t>("max_wp_instrs", true, 0)))
   {
   }
 

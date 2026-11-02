@@ -55,6 +55,7 @@ class wrong_path_tracereader
   std::string trace_file;
   std::filesystem::path trace_extract_dir;
   bool wp_enabled = false; // Set this to true to enable WP instruction generation
+  uint64_t max_wp_instrs = 0; // Max WP instrs. emitted per wrong-path episode; 0 = no limit
   bool moved = false;
   bool parsed_header = false; // The trace header is parsed lazily. This variable tracks whether or not the header has been parsed yet
 
@@ -735,6 +736,8 @@ class wrong_path_tracereader
   private:
     bool initialized = false; // Used for lazy initialization
     const bool wp_enabled = false;
+    const uint64_t max_wp_instrs = 0; // 0 = no limit
+    uint64_t wp_instrs_emitted = 0; // WP instrs. emitted since the last switch onto the WP
 
     bool on_wp = false;
     bool prev_valid = false;
@@ -1684,8 +1687,8 @@ class wrong_path_tracereader
     }
 
   public:
-    constexpr body_parser(const bool wp_enabled_, const uint8_t cpu_idx, const std::string& body_file, const header_wrapper& header_)
-        : wp_enabled(wp_enabled_), compressed_body_stream(body_file), header(header_), cpu(cpu_idx)
+    constexpr body_parser(const bool wp_enabled_, const uint64_t max_wp_instrs_, const uint8_t cpu_idx, const std::string& body_file, const header_wrapper& header_)
+        : wp_enabled(wp_enabled_), max_wp_instrs(max_wp_instrs_), compressed_body_stream(body_file), header(header_), cpu(cpu_idx)
     {
     }
 
@@ -1700,8 +1703,14 @@ class wrong_path_tracereader
       if (!wp_enabled && on_wp) {
         return std::nullopt;
       }
+      // Stop producing WP instrs. once this episode's cap is reached; the core then waits for the flush, as if the WP ran out
+      if (on_wp && max_wp_instrs != 0 && wp_instrs_emitted >= max_wp_instrs) {
+        return std::nullopt;
+      }
       std::optional<ooo_model_instr> next = read(!on_wp);
       if (next.has_value()) {
+        if (on_wp)
+          ++wp_instrs_emitted;
         prev_branch_taken = next->is_branch && next->branch_taken;
 	prev_branch_target = next->branch_target.to<uint64_t>();
 	prev_valid = true;
@@ -1730,10 +1739,12 @@ class wrong_path_tracereader
       }
       if (prev_branch_taken != taken) {
         on_wp = true;
+        wp_instrs_emitted = 0;
         return true;
       }
       if (prev_branch_taken && prev_branch_target != target) {
         on_wp = true;
+        wp_instrs_emitted = 0;
         return true;
       }
       return false;
@@ -1864,9 +1875,12 @@ public:
     body_stream->flush();
   }
 
-  wrong_path_tracereader(const std::string& tf, const uint8_t cpu_idx, const bool wp_enabled_) noexcept : cpu(cpu_idx), trace_file(tf), wp_enabled(wp_enabled_)
+  wrong_path_tracereader(const std::string& tf, const uint8_t cpu_idx, const bool wp_enabled_, const uint64_t max_wp_instrs_ = 0) noexcept
+      : cpu(cpu_idx), trace_file(tf), wp_enabled(wp_enabled_), max_wp_instrs(max_wp_instrs_)
   {
     fmt::print("[TRACEREADER] Wrong path {}abled\n", wp_enabled ? "en" : "dis");
+    if (wp_enabled && max_wp_instrs != 0)
+      fmt::print("[TRACEREADER] Wrong path capped at {} instructions per episode\n", max_wp_instrs);
   }
 
   void move_from(champsim::wrong_path_tracereader&& other) noexcept
@@ -1890,6 +1904,7 @@ public:
     // Move the data from other to this
     this->cpu = std::move(other.cpu);
     this->wp_enabled = other.wp_enabled;
+    this->max_wp_instrs = other.max_wp_instrs;
     if (not this->parsed_header) {
       if (other.parsed_header) {
         this->header_stream = std::move(other.header_stream);
@@ -2043,17 +2058,17 @@ void wrong_path_tracereader::construct_body_stream()
 {
   const std::string& body_file_name = get_body_path().string();
   if (is_gzip(body_file_name)) {
-    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::gzip_tag_t<>>>(wp_enabled, cpu, body_file_name, *header_stream));
+    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::gzip_tag_t<>>>(wp_enabled, max_wp_instrs, cpu, body_file_name, *header_stream));
   } else if (is_lzma(body_file_name)) {
-    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::lzma_tag_t<>>>(wp_enabled, cpu, body_file_name, *header_stream));
+    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::lzma_tag_t<>>>(wp_enabled, max_wp_instrs, cpu, body_file_name, *header_stream));
   } else if (is_bzip2(body_file_name)) {
-    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::bzip2_tag_t>>(wp_enabled, cpu, body_file_name, *header_stream));
+    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::bzip2_tag_t>>(wp_enabled, max_wp_instrs, cpu, body_file_name, *header_stream));
   } else if (is_zstd(body_file_name)) {
-    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::zst_tag_t>>(wp_enabled, cpu, body_file_name, *header_stream));
+    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::zst_tag_t>>(wp_enabled, max_wp_instrs, cpu, body_file_name, *header_stream));
   } else if (is_lz4(body_file_name)) {
-    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::lz4_tag_t>>(wp_enabled, cpu, body_file_name, *header_stream));
+    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::lz4_tag_t>>(wp_enabled, max_wp_instrs, cpu, body_file_name, *header_stream));
   } else { // If all else fails, parse the input as a raw text file
-    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::raw_data_tag_t>>(wp_enabled, cpu, body_file_name, *header_stream));
+    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::raw_data_tag_t>>(wp_enabled, max_wp_instrs, cpu, body_file_name, *header_stream));
   }
 }
 

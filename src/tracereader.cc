@@ -72,10 +72,11 @@ champsim::tracereader get_tracereader(const std::string& fname, uint8_t cpu, boo
   return champsim::get_tracereader_for_type<champsim::bulk_tracereader, input_instr>(fname, cpu);
 }
 
-champsim::tracereader get_wp_tracereader(const std::string& fname, const uint8_t cpu, const bool repeat, const bool wp_enabled)
+champsim::tracereader get_wp_tracereader(const std::string& fname, const uint8_t cpu, const bool repeat, const bool wp_enabled, const uint64_t max_wp_instrs)
 {
   if (repeat)
-    return champsim::tracereader{champsim::repeatable<champsim::wrong_path_tracereader, const std::string, const uint8_t, const bool>(fname, cpu, wp_enabled)};
+    return champsim::tracereader{
+        champsim::repeatable<champsim::wrong_path_tracereader, const std::string, const uint8_t, const bool, const uint64_t>(fname, cpu, wp_enabled, max_wp_instrs)};
 
-  return champsim::tracereader{champsim::wrong_path_tracereader(fname, cpu, wp_enabled)};
+  return champsim::tracereader{champsim::wrong_path_tracereader(fname, cpu, wp_enabled, max_wp_instrs)};
 }
