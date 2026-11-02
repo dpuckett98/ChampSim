@@ -202,8 +202,9 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   // access cache
   auto [set_begin, set_end] = get_set_span(handle_pkt.address);
   auto way = std::find_if(set_begin, set_end, [matcher = matches_address(handle_pkt.address)](const auto& x) { return x.valid && matcher(x); });
-  const auto hit = (way != set_end);
-  const auto useful_prefetch = (hit && way->prefetch && !handle_pkt.prefetch_from_this);
+  const auto tag_hit = (way != set_end);
+  const auto hit = tag_hit || always_hit;
+  const auto useful_prefetch = (tag_hit && way->prefetch && !handle_pkt.prefetch_from_this);
 
   if constexpr (champsim::debug_print) {
     fmt::print("[{}] {} instr_id: {} address: {} v_address: {} data: {} set: {} way: {} ({}) type: {} cycle: {}\n", NAME, __func__, handle_pkt.instr_id,
@@ -219,22 +220,24 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   // update replacement policy
   const auto way_idx = std::distance(set_begin, way);
   impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, module_address(handle_pkt), handle_pkt.ip, {}, handle_pkt.type,
-                                hit);
+                                tag_hit);
 
   if (hit) {
     sim_stats.hits.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
 
-    response_type response{handle_pkt.address, handle_pkt.v_address, way->data, metadata_thru, handle_pkt.instr_depend_on_me};
+    response_type response{handle_pkt.address, handle_pkt.v_address, tag_hit ? way->data : handle_pkt.data, metadata_thru, handle_pkt.instr_depend_on_me};
     for (auto* ret : handle_pkt.to_return) {
       ret->push_back(response);
     }
 
-    way->dirty |= (handle_pkt.type == access_type::WRITE);
+    if (tag_hit) {
+      way->dirty |= (handle_pkt.type == access_type::WRITE);
 
-    // update prefetch stats and reset prefetch bit
-    if (useful_prefetch) {
-      ++sim_stats.pf_useful;
-      way->prefetch = false;
+      // update prefetch stats and reset prefetch bit
+      if (useful_prefetch) {
+        ++sim_stats.pf_useful;
+        way->prefetch = false;
+      }
     }
   }
 
