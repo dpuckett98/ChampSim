@@ -1423,7 +1423,7 @@ class wrong_path_tracereader
     constexpr void handle_thread_switch()
     {
       const int64_t thread_id_delta = compressed_body_stream.parse_sleb();
-      previous_thread_id += static_cast<uint32_t>(static_cast<int64_t>(previous_thread_id) + thread_id_delta);
+      previous_thread_id = static_cast<uint32_t>(static_cast<int64_t>(previous_thread_id) + thread_id_delta);
     }
 
     constexpr void handle_asid_switch()
