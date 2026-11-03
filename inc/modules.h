@@ -1165,9 +1165,19 @@ struct module_base {
     // Called at the start of each phase
     virtual void begin_phase([[maybe_unused]] bool is_warmup) {}
 
+    // Called at the end of each phase
+    virtual void end_phase([[maybe_unused]] bool is_warmup) {}
+
     // Called each cycle that a core retires instructions; [begin, end) are the retiring ROB entries
     virtual void retire([[maybe_unused]] uint32_t cpu, [[maybe_unused]] std::deque<ooo_model_instr>::const_iterator begin,
                         [[maybe_unused]] std::deque<ooo_model_instr>::const_iterator end, [[maybe_unused]] uint64_t cycle)
+    {
+    }
+
+    // Called every core cycle at the retire stage, with the ROB as it stands at the start of the cycle (the num_retired retiring entries are at its head).
+    // recovering_from_mispredict is true from a misprediction flush until the next correct-path instruction is dispatched into the ROB.
+    virtual void retire_cycle([[maybe_unused]] uint32_t cpu, [[maybe_unused]] uint64_t cycle, [[maybe_unused]] std::size_t num_retired,
+                              [[maybe_unused]] const std::deque<ooo_model_instr>& rob, [[maybe_unused]] bool recovering_from_mispredict)
     {
     }
   };

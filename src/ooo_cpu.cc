@@ -332,6 +332,7 @@ void O3_CPU::do_flush(ooo_model_instr& mispredicted_branch)
   this->fetch_resume_time = this->current_time + BRANCH_MISPREDICT_PENALTY;
   workload_source_pimpl[0]->flush();
   on_WP = false;
+  recovering_from_mispredict = true;
 
   ++sim_stats.wp_episodes;
   auto& episode_counts = sim_stats.wp_episode_instrs[wp_instrs_this_episode];
@@ -644,6 +645,8 @@ long O3_CPU::dispatch_instruction()
          && ((std::size(DISPATCH_BUFFER.front().destination_memory) + std::size(SQ)) <= SQ_SIZE)) {
     ROB.push_back(std::move(DISPATCH_BUFFER.front()));
     DISPATCH_BUFFER.pop_front();
+    if (!ROB.back().is_wp)
+      recovering_from_mispredict = false;
     do_memory_scheduling(ROB.back());
     count_stage("dispatch", ROB.back());
 
@@ -968,6 +971,7 @@ long O3_CPU::retire_rob()
   champsim::listeners::retire(cpu, retire_begin, retire_end, cycles);
 
   auto retire_count = std::distance(retire_begin, retire_end);
+  champsim::listeners::retire_cycle(cpu, cycles, static_cast<std::size_t>(retire_count), ROB, recovering_from_mispredict);
   num_retired += retire_count;
   ROB.erase(retire_begin, retire_end);
 

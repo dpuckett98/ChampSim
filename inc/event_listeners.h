@@ -32,6 +32,18 @@ inline void begin_phase(bool is_warmup)
     listener->begin_phase(is_warmup);
 }
 
+inline void end_phase(bool is_warmup)
+{
+  for (auto* listener : active())
+    listener->end_phase(is_warmup);
+}
+
+inline void retire_cycle(uint32_t cpu, uint64_t cycle, std::size_t num_retired, const std::deque<ooo_model_instr>& rob, bool recovering_from_mispredict)
+{
+  for (auto* listener : active())
+    listener->retire_cycle(cpu, cycle, num_retired, rob, recovering_from_mispredict);
+}
+
 inline void retire(uint32_t cpu, std::deque<ooo_model_instr>::const_iterator begin, std::deque<ooo_model_instr>::const_iterator end, uint64_t cycle)
 {
   for (auto* listener : active())

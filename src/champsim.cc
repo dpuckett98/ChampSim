@@ -242,6 +242,8 @@ std::vector<phase_stats> main(modules::environment_module& env, std::vector<phas
         fmt::print("{} (Simulation time: {:%H hr %M min %S sec})\n", msg, elapsed_time());
     }
 
+    champsim::listeners::end_phase(is_warmup);
+
     if (!is_warmup) {
       results.push_back(collect_phase_stats(phase, env));
     }

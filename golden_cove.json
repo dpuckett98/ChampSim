@@ -7,6 +7,7 @@
   "heartbeat_frequency": 10000000,
 
   "children": [
+    {"name": "retire_cpi_stack", "module": "listener", "model": "RETIRE_CPI_STACK"},
     {
       "_comment": "=== Channels (instantiated first, referenced by other modules) ===",
       "name": "cpu0_PTW_cpu0_L1D_channel",

@@ -179,8 +179,13 @@ A ``listener`` observes simulation events without affecting timing. Every hook i
 no-op by default, so an implementation overrides only the events it needs:
 
 * ``begin_phase(is_warmup)`` — called at the start of each phase.
+* ``end_phase(is_warmup)`` — called at the end of each phase.
 * ``retire(cpu, begin, end, cycle)`` — called each cycle a core retires instructions,
   with ``[begin, end)`` spanning the retiring ROB entries.
+* ``retire_cycle(cpu, cycle, num_retired, rob, recovering_from_mispredict)`` — called every
+  core cycle at the retire stage with the ROB as it stands at the start of the cycle.
+  ``recovering_from_mispredict`` is true from a misprediction flush until the next
+  correct-path instruction is dispatched into the ROB.
 
 Register an implementation like any other module::
 
@@ -195,6 +200,18 @@ A run's listeners come from two places:
   ``heartbeat_frequency`` (default 10000000).
 
 ``--hide-heartbeat`` removes every ``HEARTBEAT`` listener.
+
+ChampSim ships these listener models:
+
+* ``HEARTBEAT`` — prints each core's progress every ``heartbeat_frequency`` retired instructions.
+* ``RETIRE_CPI_STACK`` — a top-level CPI stack at the retire stage. Each core cycle is
+  counted as exactly one of: *retiring* (at least one instruction retired),
+  *mis-speculating* (nothing retired and the ROB is empty while the core recovers from a
+  misprediction), *stalled* (nothing retired because the correct-path ROB head hasn't
+  completed), or *drained* (nothing retired and the ROB is empty for any other reason,
+  i.e. the front end isn't supplying instructions). The counts are printed per core at the
+  end of each non-warmup phase. Enable it with
+  ``{"name": "cpi_stack", "module": "listener", "model": "RETIRE_CPI_STACK"}``.
 
 .. doxygenstruct:: champsim::modules::listener
    :members:
