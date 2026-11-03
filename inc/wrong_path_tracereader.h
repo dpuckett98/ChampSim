@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bitset>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -759,7 +760,21 @@ class wrong_path_tracereader
     const uint8_t cpu;
 
     // Note: The trace contains register file values but ChampSim doesn't care about them. We maintain this regfile for posterity's sake only
-    using RegFileType = std::map<uint64_t, std::map<uint64_t, field_value>>;
+    // Register IDs are 8-bit, so each thread's registers are a flat array, with a bitset recording which registers have been written
+    struct thread_regs {
+      std::array<field_value, 256> values{};
+      std::bitset<256> written;
+    };
+    struct RegFileType {
+      std::map<uint64_t, thread_regs> threads; // Thread ID -> its registers
+
+      constexpr void set(const uint64_t thread_id, const uint8_t reg_id, const field_value value)
+      {
+        thread_regs& regs = threads[thread_id];
+        regs.values[reg_id] = value;
+        regs.written.set(reg_id);
+      }
+    };
     RegFileType regfile;
 
     // Persistent overlay
@@ -1140,13 +1155,13 @@ class wrong_path_tracereader
           if (reg_index >= instruction_template.dst_regs.size())
             throw std::runtime_error(
                 fmt::format("[ERROR] Observed data for register #{} for an instruction with {} registers", reg_index, instruction_template.dst_regs.size()));
-          const uint64_t reg_id = instruction_template.dst_regs[reg_index];
+          const uint8_t reg_id = instruction_template.dst_regs[reg_index];
           if constexpr (wrong_path) {
             if (!wp_state)
               throw std::runtime_error("[ERROR] Not running in WP mode");
-            wp_state.value().regfile[previous_thread_id][reg_id] = delta;
+            wp_state.value().regfile.set(previous_thread_id, reg_id, delta);
           } else
-            regfile[previous_thread_id][reg_id] = delta;
+            regfile.set(previous_thread_id, reg_id, delta);
           break;
         }
         case field_kind::INSN_OPCODE:
@@ -1440,7 +1455,7 @@ class wrong_path_tracereader
         const uint8_t gen_id = static_cast<uint8_t>(compressed_body_stream.read());
         const uint8_t width = static_cast<uint8_t>(compressed_body_stream.read());
         const std::vector<char> bytes = compressed_body_stream.read_bytes(width);
-        regfile[thread_id][gen_id] = cast_to_field_value(bytes);
+        regfile.set(thread_id, gen_id, cast_to_field_value(bytes));
       }
     }
 
