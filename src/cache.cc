@@ -164,6 +164,9 @@ bool CACHE::handle_fill(const fill_type& fill)
   champsim::address evicting_address{};
   if (way != set_end && way->valid) {
     evicting_address = module_address(*way);
+    ++sim_stats.evictions;
+    if (way->dirty)
+      ++sim_stats.dirty_evictions;
   }
 
   auto metadata_thru = impl_prefetcher_cache_fill(module_address(fill), get_set_index(fill.address), way_idx, (fill.type == access_type::PREFETCH),
@@ -297,6 +300,7 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
       // Mark the prefetch as useful
       if (fill_entry->prefetch_from_this) {
         ++sim_stats.pf_useful;
+        ++sim_stats.pf_late;
       }
     }
 
@@ -306,6 +310,7 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
     *fill_entry = fill_type::merge(*fill_entry, to_allocate);
   } else {
     if (mshr_full) { // not enough MSHR resource
+      ++sim_stats.mshr_full_rejects;
       return false;  // TODO should we allow prefetches anyway if they will not be filled to this level?
     }
 
@@ -313,6 +318,7 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
     bool success = send_to_rq ? lower_level->add_rq(mshr_pkt.second) : lower_level->add_pq(mshr_pkt.second);
 
     if (!success) {
+      ++sim_stats.lower_queue_rejects;
       return false;
     }
 
@@ -371,6 +377,11 @@ auto CACHE::initiate_tag_check(champsim::modules::channel_module* ul)
 long CACHE::operate()
 {
   long progress{0};
+
+  // performance counters
+  ++sim_stats.cycles;
+  sim_stats.mshr_occupancy_sum += std::size(MSHR);
+  sim_stats.mshr_full_cycles += (std::size(MSHR) >= MSHR_SIZE);
 
   auto is_ready = [time = current_time](const auto& entry) {
     return entry.event_cycle <= time;
@@ -866,6 +877,15 @@ void CACHE::end_phase()
   roi_stats.pf_useful = sim_stats.pf_useful;
   roi_stats.pf_useless = sim_stats.pf_useless;
   roi_stats.pf_fill = sim_stats.pf_fill;
+
+  roi_stats.cycles = sim_stats.cycles;
+  roi_stats.evictions = sim_stats.evictions;
+  roi_stats.dirty_evictions = sim_stats.dirty_evictions;
+  roi_stats.pf_late = sim_stats.pf_late;
+  roi_stats.mshr_occupancy_sum = sim_stats.mshr_occupancy_sum;
+  roi_stats.mshr_full_cycles = sim_stats.mshr_full_cycles;
+  roi_stats.mshr_full_rejects = sim_stats.mshr_full_rejects;
+  roi_stats.lower_queue_rejects = sim_stats.lower_queue_rejects;
 
   for (auto* ul : upper_levels) {
     ul->get_roi_stats().RQ_ACCESS = ul->get_sim_stats().RQ_ACCESS;

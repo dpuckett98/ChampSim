@@ -32,6 +32,17 @@ auto print_ratio(N num, D denom)
   return std::string{"-"};
 }
 
+// Formats a histogram as " k:count" pairs, skipping empty buckets
+std::string format_histogram(const std::vector<uint64_t>& histogram)
+{
+  std::string retval;
+  for (std::size_t k = 0; k < std::size(histogram); ++k) {
+    if (histogram[k] != 0)
+      retval += fmt::format(" {}:{}", k, histogram[k]);
+  }
+  return retval;
+}
+
 // stages are printed in pipeline order; any stages not listed here are printed afterwards
 constexpr std::array<std::string_view, 8> pipeline_stage_order{"fetch", "dib_hit", "decode", "dispatch", "schedule", "execute", "complete", "retire"};
 
@@ -98,6 +109,29 @@ std::vector<std::string> champsim::modules::core_module::format_plaintext(const 
     });
   }
 
+  lines.emplace_back("Retired instruction mix");
+  lines.push_back(fmt::format("{} retired loads: {} (memory operands: {}) stores: {} (memory operands: {})", stats.name, stats.retired_loads,
+                              stats.retired_load_ops, stats.retired_stores, stats.retired_store_ops));
+  const auto retired_total = std::accumulate(std::begin(types), std::end(types), 0LL, [&](auto acc, auto t) { return acc + stats.retired_branches.value_or(t, 0); });
+  const auto taken_total = std::accumulate(std::begin(types), std::end(types), 0LL, [&](auto acc, auto t) { return acc + stats.retired_taken_branches.value_or(t, 0); });
+  lines.push_back(fmt::format("{} retired branches: {} taken: {}", stats.name, retired_total, taken_total));
+  for (auto idx : types) {
+    lines.push_back(fmt::format("{}: retired: {} taken: {}", branch_type_names.at(champsim::to_underlying(idx)), stats.retired_branches.value_or(idx, 0),
+                                stats.retired_taken_branches.value_or(idx, 0)));
+  }
+
+  lines.emplace_back("Core activity");
+  lines.push_back(fmt::format("{} average occupancy ROB: {} LQ: {} SQ: {} cycles full ROB: {} LQ: {} SQ: {}", stats.name,
+                              ::print_ratio(stats.rob_occupancy_sum, stats.occupancy_cycles), ::print_ratio(stats.lq_occupancy_sum, stats.occupancy_cycles),
+                              ::print_ratio(stats.sq_occupancy_sum, stats.occupancy_cycles), stats.rob_full_cycles, stats.lq_full_cycles, stats.sq_full_cycles));
+  lines.push_back(fmt::format("{} mispredict recovery cycles: {} fetch resteer cycles: {} mispredicts resolved at decode: {} at execute: {}", stats.name,
+                              stats.recovery_cycles, stats.fetch_resteer_cycles, stats.mispredicts_resolved_at_decode, stats.mispredicts_resolved_at_execute));
+  lines.push_back(fmt::format("{} loads forwarded from an executed store: {} loads waiting on an older store: {}", stats.name, stats.loads_forwarded_from_store,
+                              stats.loads_waiting_on_store));
+  lines.push_back(fmt::format("{} retire width histogram (instrs:cycles):{}", stats.name, ::format_histogram(stats.retire_width_histogram)));
+  lines.push_back(fmt::format("{} issue width histogram (instrs:cycles):{}", stats.name, ::format_histogram(stats.issue_width_histogram)));
+  lines.push_back(fmt::format("{} dispatch width histogram (instrs:cycles):{}", stats.name, ::format_histogram(stats.dispatch_width_histogram)));
+
   return lines;
 }
 
@@ -126,6 +160,34 @@ void champsim::modules::core_module::format_json(const stats_type& stats, champs
       stages.group(stage).add("correct path", counts.first).add("wrong path", counts.second);
     });
   }
+
+  b.add("retired loads", stats.retired_loads)
+   .add("retired load operands", stats.retired_load_ops)
+   .add("retired stores", stats.retired_stores)
+   .add("retired store operands", stats.retired_store_ops);
+  auto retired = b.group("retired branches");
+  for (auto type : types) {
+    retired.group(std::string{branch_type_names.at(champsim::to_underlying(type))})
+        .add("retired", stats.retired_branches.value_or(type, 0))
+        .add("taken", stats.retired_taken_branches.value_or(type, 0));
+  }
+
+  b.add("occupancy cycles", stats.occupancy_cycles)
+   .add("ROB occupancy sum", stats.rob_occupancy_sum)
+   .add("LQ occupancy sum", stats.lq_occupancy_sum)
+   .add("SQ occupancy sum", stats.sq_occupancy_sum)
+   .add("ROB full cycles", stats.rob_full_cycles)
+   .add("LQ full cycles", stats.lq_full_cycles)
+   .add("SQ full cycles", stats.sq_full_cycles)
+   .add("mispredict recovery cycles", stats.recovery_cycles)
+   .add("fetch resteer cycles", stats.fetch_resteer_cycles)
+   .add("mispredicts resolved at decode", stats.mispredicts_resolved_at_decode)
+   .add("mispredicts resolved at execute", stats.mispredicts_resolved_at_execute)
+   .add("loads forwarded from store", stats.loads_forwarded_from_store)
+   .add("loads waiting on store", stats.loads_waiting_on_store)
+   .add("retire width histogram", stats.retire_width_histogram)
+   .add("issue width histogram", stats.issue_width_histogram)
+   .add("dispatch width histogram", stats.dispatch_width_histogram);
 }
 
 // source_consumer hooks for phase messaging
@@ -214,6 +276,12 @@ std::vector<std::string> champsim::modules::cache_module::format_plaintext(const
     uint64_t total_downstream_demands = total_fill - fill.value_or(std::pair{access_type::PREFETCH, cpu}, fill_value_type{});
     lines.push_back(
         fmt::format("cpu{}->{} AVERAGE MISS LATENCY: {} cycles", cpu, stats.name, ::print_ratio(stats.total_miss_latency_cycles, total_downstream_demands)));
+
+    lines.push_back(fmt::format("cpu{}->{} EVICTIONS: {:10} DIRTY: {:10} LATE PREFETCHES: {:10}", cpu, stats.name, stats.evictions, stats.dirty_evictions,
+                                stats.pf_late));
+    lines.push_back(fmt::format("cpu{}->{} AVERAGE MSHR OCCUPANCY: {} MSHR FULL CYCLES: {} MSHR FULL REJECTS: {} LOWER QUEUE FULL REJECTS: {}", cpu,
+                                stats.name, ::print_ratio(stats.mshr_occupancy_sum, stats.cycles), stats.mshr_full_cycles, stats.mshr_full_rejects,
+                                stats.lower_queue_rejects));
   }
 
   return lines;
@@ -245,6 +313,15 @@ void champsim::modules::cache_module::format_json(const stats_type& stats, champ
     total_downstream_demands -= stats.fill.value_or(std::pair{access_type::PREFETCH, cpu}, fill_value_type{});
 
   b.add("miss latency", std::ceil(stats.total_miss_latency_cycles) / std::ceil(total_downstream_demands));
+
+  b.add("cycles", stats.cycles)
+   .add("evictions", stats.evictions)
+   .add("dirty evictions", stats.dirty_evictions)
+   .add("late prefetch", stats.pf_late)
+   .add("MSHR occupancy sum", stats.mshr_occupancy_sum)
+   .add("MSHR full cycles", stats.mshr_full_cycles)
+   .add("MSHR full rejects", stats.mshr_full_rejects)
+   .add("lower queue full rejects", stats.lower_queue_rejects);
 
   for (const auto type : {access_type::LOAD, access_type::RFO, access_type::PREFETCH, access_type::WRITE, access_type::TRANSLATION}) {
     std::vector<hits_value_type> hit_vec;
@@ -283,6 +360,12 @@ std::vector<std::string> champsim::modules::memory_controller_module::format_pla
   else
     lines.push_back(fmt::format("{} REFRESHES ISSUED: -", stats.name));
 
+  lines.push_back(fmt::format("{} READS: {:10} AVG READ LATENCY: {} cycles RQ FULL: {:10}", stats.name, stats.reads_completed,
+                              ::print_ratio(stats.total_read_latency, stats.reads_completed), stats.RQ_FULL));
+  lines.push_back(fmt::format("{} AVG RQ OCCUPANCY: {} AVG WQ OCCUPANCY: {} WRITE MODE SWITCHES: {:10}", stats.name,
+                              ::print_ratio(stats.rq_occupancy_sum, stats.cycles), ::print_ratio(stats.wq_occupancy_sum, stats.cycles),
+                              stats.write_mode_switches));
+
   return lines;
 }
 
@@ -293,5 +376,12 @@ void champsim::modules::memory_controller_module::format_json(const stats_type& 
    .add("WQ ROW_BUFFER_HIT", stats.WQ_ROW_BUFFER_HIT)
    .add("WQ ROW_BUFFER_MISS", stats.WQ_ROW_BUFFER_MISS)
    .add("AVG DBUS CONGESTED CYCLE", std::ceil(stats.dbus_cycle_congested) / std::ceil(stats.dbus_count_congested))
-   .add("REFRESHES ISSUED", stats.refresh_cycles);
+   .add("REFRESHES ISSUED", stats.refresh_cycles)
+   .add("RQ FULL", stats.RQ_FULL)
+   .add("READS", stats.reads_completed)
+   .add("TOTAL READ LATENCY", stats.total_read_latency)
+   .add("CYCLES", stats.cycles)
+   .add("RQ OCCUPANCY SUM", stats.rq_occupancy_sum)
+   .add("WQ OCCUPANCY SUM", stats.wq_occupancy_sum)
+   .add("WRITE MODE SWITCHES", stats.write_mode_switches);
 }

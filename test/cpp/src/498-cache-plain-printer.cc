@@ -2,6 +2,27 @@
 
 #include "cache_stats.h"
 #include "modules.h"
+#include "json_stat_builder.h"
+
+namespace
+{
+// format_plaintext prints two performance counter lines after each CPU's AVERAGE MISS LATENCY line. Inserts them, for a cache_stats whose performance
+// counters are all zero
+std::vector<std::string> with_zero_perf_counters(const std::vector<std::string>& expected)
+{
+  std::vector<std::string> retval;
+  const std::string marker = " AVERAGE MISS LATENCY: ";
+  for (const auto& line : expected) {
+    retval.push_back(line);
+    if (const auto pos = line.find(marker); pos != std::string::npos) {
+      const std::string prefix = line.substr(0, pos); // "cpuN->name"
+      retval.push_back(prefix + " EVICTIONS:          0 DIRTY:          0 LATE PREFETCHES:          0");
+      retval.push_back(prefix + " AVERAGE MSHR OCCUPANCY: - MSHR FULL CYCLES: 0 MSHR FULL REJECTS: 0 LOWER QUEUE FULL REJECTS: 0");
+    }
+  }
+  return retval;
+}
+} // namespace
 
 TEST_CASE("An empty cache stat block prints nothing")
 {
@@ -10,7 +31,7 @@ TEST_CASE("An empty cache stat block prints nothing")
 
   std::vector<std::string> expected{};
 
-  REQUIRE_THAT(champsim::modules::cache_module::format_plaintext(given), Catch::Matchers::RangeEquals(expected));
+  REQUIRE_THAT(champsim::modules::cache_module::format_plaintext(given), Catch::Matchers::RangeEquals(with_zero_perf_counters(expected)));
 }
 
 TEST_CASE("Hits increment the hit and access counts")
@@ -38,7 +59,7 @@ TEST_CASE("Hits increment the hit and access counts")
                                     "cpu0->test_cache AVERAGE MISS LATENCY: - cycles"};
   expected.at(line_index) = expected_line;
 
-  REQUIRE_THAT(champsim::modules::cache_module::format_plaintext(given), Catch::Matchers::RangeEquals(expected));
+  REQUIRE_THAT(champsim::modules::cache_module::format_plaintext(given), Catch::Matchers::RangeEquals(with_zero_perf_counters(expected)));
 }
 
 TEST_CASE("Misses increment the miss and access counts")
@@ -66,7 +87,7 @@ TEST_CASE("Misses increment the miss and access counts")
                                     "cpu0->test_cache AVERAGE MISS LATENCY: - cycles"};
   expected.at(line_index) = expected_line;
 
-  REQUIRE_THAT(champsim::modules::cache_module::format_plaintext(given), Catch::Matchers::RangeEquals(expected));
+  REQUIRE_THAT(champsim::modules::cache_module::format_plaintext(given), Catch::Matchers::RangeEquals(with_zero_perf_counters(expected)));
 }
 
 TEST_CASE("Returning misses increment the AMAT")
@@ -101,7 +122,7 @@ TEST_CASE("Returning misses increment the AMAT")
   expected.push_back("cpu0->test_cache AVERAGE MISS LATENCY: " + std::to_string(miss_return_latency) + " cycles");
   expected.at(line_index) = expected_line;
 
-  REQUIRE_THAT(champsim::modules::cache_module::format_plaintext(given), Catch::Matchers::RangeEquals(expected));
+  REQUIRE_THAT(champsim::modules::cache_module::format_plaintext(given), Catch::Matchers::RangeEquals(with_zero_perf_counters(expected)));
 }
 
 TEST_CASE("Prefetch requests increase the count")
@@ -120,7 +141,7 @@ TEST_CASE("Prefetch requests increase the count")
                                     "cpu0->test_cache PREFETCH REQUESTED:          1 ISSUED:          0 USEFUL:          0 USELESS:          0",
                                     "cpu0->test_cache AVERAGE MISS LATENCY: - cycles"};
 
-  REQUIRE_THAT(champsim::modules::cache_module::format_plaintext(given), Catch::Matchers::RangeEquals(expected));
+  REQUIRE_THAT(champsim::modules::cache_module::format_plaintext(given), Catch::Matchers::RangeEquals(with_zero_perf_counters(expected)));
 }
 
 TEST_CASE("Prefetch issues increase the count")
@@ -139,7 +160,7 @@ TEST_CASE("Prefetch issues increase the count")
                                     "cpu0->test_cache PREFETCH REQUESTED:          0 ISSUED:          1 USEFUL:          0 USELESS:          0",
                                     "cpu0->test_cache AVERAGE MISS LATENCY: - cycles"};
 
-  REQUIRE_THAT(champsim::modules::cache_module::format_plaintext(given), Catch::Matchers::RangeEquals(expected));
+  REQUIRE_THAT(champsim::modules::cache_module::format_plaintext(given), Catch::Matchers::RangeEquals(with_zero_perf_counters(expected)));
 }
 
 TEST_CASE("Prefetch useful increases the count")
@@ -158,7 +179,7 @@ TEST_CASE("Prefetch useful increases the count")
                                     "cpu0->test_cache PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          1 USELESS:          0",
                                     "cpu0->test_cache AVERAGE MISS LATENCY: - cycles"};
 
-  REQUIRE_THAT(champsim::modules::cache_module::format_plaintext(given), Catch::Matchers::RangeEquals(expected));
+  REQUIRE_THAT(champsim::modules::cache_module::format_plaintext(given), Catch::Matchers::RangeEquals(with_zero_perf_counters(expected)));
 }
 
 TEST_CASE("Prefetch useless increases the count")
@@ -177,7 +198,7 @@ TEST_CASE("Prefetch useless increases the count")
                                     "cpu0->test_cache PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          1",
                                     "cpu0->test_cache AVERAGE MISS LATENCY: - cycles"};
 
-  REQUIRE_THAT(champsim::modules::cache_module::format_plaintext(given), Catch::Matchers::RangeEquals(expected));
+  REQUIRE_THAT(champsim::modules::cache_module::format_plaintext(given), Catch::Matchers::RangeEquals(with_zero_perf_counters(expected)));
 }
 
 TEST_CASE("Multicore stats are tracked separately")
@@ -223,5 +244,31 @@ TEST_CASE("Multicore stats are tracked separately")
   expected.at(line_index_cpu0) = expected_line_cpu0;
   expected.at(line_index_cpu1) = expected_line_cpu1;
 
-  REQUIRE_THAT(champsim::modules::cache_module::format_plaintext(given), Catch::Matchers::RangeEquals(expected));
+  REQUIRE_THAT(champsim::modules::cache_module::format_plaintext(given), Catch::Matchers::RangeEquals(with_zero_perf_counters(expected)));
+}
+TEST_CASE("Cache performance counters are printed")
+{
+  cache_stats given{};
+  given.name = "test_cache";
+  given.hits.set({access_type::LOAD, 0}, 1);
+  given.cycles = 4;
+  given.evictions = 5;
+  given.dirty_evictions = 2;
+  given.pf_late = 3;
+  given.mshr_occupancy_sum = 10;
+  given.mshr_full_cycles = 1;
+  given.mshr_full_rejects = 6;
+  given.lower_queue_rejects = 7;
+
+  auto lines = champsim::modules::cache_module::format_plaintext(given);
+  const auto has = [&lines](const std::string& line) { return std::find(std::begin(lines), std::end(lines), line) != std::end(lines); };
+  REQUIRE(has("cpu0->test_cache EVICTIONS:          5 DIRTY:          2 LATE PREFETCHES:          3"));
+  REQUIRE(has("cpu0->test_cache AVERAGE MSHR OCCUPANCY: 2.5 MSHR FULL CYCLES: 1 MSHR FULL REJECTS: 6 LOWER QUEUE FULL REJECTS: 7"));
+
+  champsim::json_stat_builder b;
+  champsim::modules::cache_module::format_json(given, b);
+  REQUIRE(b.json().at("evictions") == 5);
+  REQUIRE(b.json().at("dirty evictions") == 2);
+  REQUIRE(b.json().at("late prefetch") == 3);
+  REQUIRE(b.json().at("MSHR full rejects") == 6);
 }

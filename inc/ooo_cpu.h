@@ -206,6 +206,7 @@ public:
   void count_stage(pipeline_stage stage, const ooo_model_instr& instr);
   [[nodiscard]] stats_type with_stage_counts(stats_type stats) const;
   void squash_younger_than(uint64_t instr_id);
+  void sample_occupancy(); // per-cycle performance counters
   void do_check_dib(ooo_model_instr& instr);
   bool do_fetch_instruction(std::deque<ooo_model_instr>::iterator begin, std::deque<ooo_model_instr>::iterator end);
   void do_dib_update(const ooo_model_instr& instr);

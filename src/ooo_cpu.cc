@@ -31,9 +31,33 @@
 #include "instruction.h"
 #include "util/span.h"
 
+namespace
+{
+void count_in_histogram(std::vector<uint64_t>& histogram, std::size_t bucket)
+{
+  if (bucket >= std::size(histogram))
+    histogram.resize(bucket + 1);
+  ++histogram[bucket];
+}
+} // namespace
+
+void O3_CPU::sample_occupancy()
+{
+  const auto lq_occupancy = static_cast<std::size_t>(std::count_if(std::begin(LQ), std::end(LQ), [](const auto& lq_entry) { return lq_entry.has_value(); }));
+  ++sim_stats.occupancy_cycles;
+  sim_stats.rob_occupancy_sum += std::size(ROB);
+  sim_stats.lq_occupancy_sum += lq_occupancy;
+  sim_stats.sq_occupancy_sum += std::size(SQ);
+  sim_stats.rob_full_cycles += (std::size(ROB) >= ROB_SIZE);
+  sim_stats.lq_full_cycles += (lq_occupancy >= std::size(LQ));
+  sim_stats.sq_full_cycles += (std::size(SQ) >= SQ_SIZE);
+  sim_stats.recovery_cycles += recovering_from_mispredict;
+}
+
 long O3_CPU::operate()
 {
   long progress{0};
+  sample_occupancy();                          // performance counters
   progress += retire_rob();                    // retire
   progress += complete_inflight_instruction(); // finalize execution
   squash_pending_flush();                      // squash instrs. younger than a branch mispredict resolved at execute
@@ -146,6 +170,8 @@ void O3_CPU::direct_fdip()
     ++sim_stats.fdip_wp_cycles;
     if (current_time < fetch_resume_time)
       ++sim_stats.fdip_wp_stall_cycles;
+  } else if (current_time < fetch_resume_time) {
+    ++sim_stats.fetch_resteer_cycles;
   }
 
   // bandwidths: max # instrs, max # branches, max # taken branches
@@ -614,6 +640,7 @@ long O3_CPU::decode_instruction()
         //this->fetch_resume_time = this->current_time + BRANCH_MISPREDICT_PENALTY;
 	//workload_source_pimpl[0]->flush();
 	//on_WP = false;
+	++this->sim_stats.mispredicts_resolved_at_decode;
 	do_flush(db_entry);
       }
     }
@@ -719,6 +746,7 @@ long O3_CPU::dispatch_instruction()
     ROB.back().ready_time = current_time + (is_warmup() ? champsim::chrono::clock::duration{} : SCHEDULING_LATENCY);
   }
 
+  ::count_in_histogram(sim_stats.dispatch_width_histogram, static_cast<std::size_t>(available_dispatch_bandwidth.amount_consumed()));
   champsim::listeners::dispatch_cycle(cpu, current_time.time_since_epoch() / clock_period, static_cast<std::size_t>(available_dispatch_bandwidth.amount_consumed()),
                                       num_wp_dispatched, DISPATCH_BUFFER, dispatch_stall(), recovering_from_mispredict);
 
@@ -783,6 +811,7 @@ long O3_CPU::execute_instruction()
     }
   }
 
+  ::count_in_histogram(sim_stats.issue_width_histogram, static_cast<std::size_t>(exec_bw.amount_consumed()));
   champsim::listeners::issue_cycle(cpu, current_time.time_since_epoch() / clock_period, static_cast<std::size_t>(exec_bw.amount_consumed()), num_wp_issued, ROB,
                                    backend_full(), recovering_from_mispredict);
 
@@ -832,9 +861,11 @@ void O3_CPU::do_memory_scheduling(ooo_model_instr& instr)
     });
     if (sq_it != std::end(SQ) && sq_it->virtual_address == smem) {
       if (sq_it->fetch_issued) { // Store already executed
+        ++sim_stats.loads_forwarded_from_store;
         (*q_entry)->finish(instr);
         q_entry->reset();
       } else {
+        ++sim_stats.loads_waiting_on_store;
         assert(sq_it->instr_id < instr.instr_id);      // The found SQ entry is a prior store
         sq_it->lq_depend_on_me.emplace_back(*q_entry); // Forward the load when the store finishes
         (*q_entry)->producer_id = sq_it->instr_id;     // The load waits on the store to finish
@@ -956,6 +987,7 @@ void O3_CPU::do_complete_execution(ooo_model_instr& instr)
     //fetch_resume_time = current_time + BRANCH_MISPREDICT_PENALTY;
     //workload_source_pimpl[0]->flush();
     //on_WP = false;
+    ++sim_stats.mispredicts_resolved_at_execute;
     do_flush(instr);
   }
 }
@@ -1039,12 +1071,27 @@ long O3_CPU::retire_rob()
       reg_allocator.retire_dest_register(dreg);
     }
     count_stage(pipeline_stage::RETIRE, *rob_it);
+
+    if (!std::empty(rob_it->source_memory)) {
+      ++sim_stats.retired_loads;
+      sim_stats.retired_load_ops += std::size(rob_it->source_memory);
+    }
+    if (!std::empty(rob_it->destination_memory)) {
+      ++sim_stats.retired_stores;
+      sim_stats.retired_store_ops += std::size(rob_it->destination_memory);
+    }
+    if (rob_it->is_branch) {
+      sim_stats.retired_branches.increment(rob_it->branch);
+      if (rob_it->branch_taken)
+        sim_stats.retired_taken_branches.increment(rob_it->branch);
+    }
   }
 
   uint64_t cycles = current_time.time_since_epoch() / clock_period;
   champsim::listeners::retire(cpu, retire_begin, retire_end, cycles);
 
   auto retire_count = std::distance(retire_begin, retire_end);
+  ::count_in_histogram(sim_stats.retire_width_histogram, static_cast<std::size_t>(retire_count));
   champsim::listeners::retire_cycle(cpu, cycles, static_cast<std::size_t>(retire_count), ROB, recovering_from_mispredict, head_state());
   num_retired += retire_count;
   ROB.erase(retire_begin, retire_end);

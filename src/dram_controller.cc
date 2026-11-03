@@ -149,6 +149,10 @@ long DRAM_CHANNEL::finish_dbus_request()
   long progress{0};
 
   if (active_request != std::end(bank_request) && active_request->ready_time <= current_time) {
+    if (active_request->pkt->value().is_read) {
+      ++sim_stats.reads_completed;
+      sim_stats.total_read_latency += static_cast<uint64_t>((current_time - active_request->pkt->value().time_enqueued) / clock_period);
+    }
     response_type response{active_request->pkt->value().address, active_request->pkt->value().v_address, active_request->pkt->value().data,
                            active_request->pkt->value().pf_metadata, active_request->pkt->value().instr_depend_on_me};
     for (auto* ret : active_request->pkt->value().to_return) {
@@ -215,6 +219,9 @@ void DRAM_CHANNEL::swap_write_mode()
   // Check queue occupancy
   auto wq_occu = static_cast<std::size_t>(std::count_if(std::begin(WQ), std::end(WQ), [](const auto& x) { return x.has_value(); }));
   auto rq_occu = static_cast<std::size_t>(std::count_if(std::begin(RQ), std::end(RQ), [](const auto& x) { return x.has_value(); }));
+  ++sim_stats.cycles;
+  sim_stats.rq_occupancy_sum += rq_occu;
+  sim_stats.wq_occupancy_sum += wq_occu;
 
   // Change modes if the queues are unbalanced
   if ((!write_mode && (wq_occu >= DRAM_WRITE_HIGH_WM || (rq_occu == 0 && wq_occu > 0)))
@@ -244,6 +251,7 @@ void DRAM_CHANNEL::swap_write_mode()
 
     // Invert the mode
     write_mode = !write_mode;
+    ++sim_stats.write_mode_switches;
   }
 }
 
@@ -525,12 +533,15 @@ bool MEMORY_CONTROLLER::add_rq(const request_type& packet, champsim::modules::ch
     rq_it->value().forward_checked = false;
     rq_it->value().scheduled = false;
     rq_it->value().ready_time = current_time;
+    rq_it->value().time_enqueued = current_time;
+    rq_it->value().is_read = true;
     if (packet.response_requested)
       rq_it->value().to_return = {&ul->get_returned()};
 
     return true;
   }
 
+  ++channel.sim_stats.RQ_FULL;
   return false;
 }
 
@@ -545,6 +556,7 @@ bool MEMORY_CONTROLLER::add_wq(const request_type& packet)
     wq_it->value().forward_checked = false;
     wq_it->value().scheduled = false;
     wq_it->value().ready_time = current_time;
+    wq_it->value().time_enqueued = current_time;
 
     return true;
   }

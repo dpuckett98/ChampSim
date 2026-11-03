@@ -112,6 +112,8 @@ struct DRAM_CHANNEL final : public champsim::operable {
     champsim::address v_address{};
     champsim::address data{};
     champsim::chrono::clock::time_point ready_time = champsim::chrono::clock::time_point::max();
+    champsim::chrono::clock::time_point time_enqueued{}; // when the request entered the RQ or WQ
+    bool is_read = false;
 
     std::vector<uint64_t> instr_depend_on_me{};
     std::vector<std::deque<response_type>*> to_return{};
