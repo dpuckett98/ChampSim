@@ -12,6 +12,8 @@ TEST_CASE("An empty core stats prints zero")
   std::vector<std::string> expected{"test_cpu cumulative IPC: - instructions: 0 cycles: 0",
                                     "test_cpu Branch Prediction Accuracy: -% MPKI: - Average ROB Occupancy at Mispredict: -",
                                     "test_cpu FDIP wrong path cycles: 0 stalled waiting for wrong path instrs.: 0",
+                                    "test_cpu WP episodes: 0 ran out of WP instrs.: 0 (-%)",
+                                    "test_cpu WP instrs. pulled per episode (instrs:not ran out/ran out):",
                                     "Branch type MPKI",
                                     "BRANCH_DIRECT_JUMP: -",
                                     "BRANCH_INDIRECT: -",
@@ -35,6 +37,8 @@ TEST_CASE("The number of instructions and cycles modifies the IPC")
   std::vector<std::string> expected{"test_cpu cumulative IPC: 2 instructions: 100 cycles: 50",
                                     "test_cpu Branch Prediction Accuracy: -% MPKI: 0 Average ROB Occupancy at Mispredict: -",
                                     "test_cpu FDIP wrong path cycles: 0 stalled waiting for wrong path instrs.: 0",
+                                    "test_cpu WP episodes: 0 ran out of WP instrs.: 0 (-%)",
+                                    "test_cpu WP instrs. pulled per episode (instrs:not ran out/ran out):",
                                     "Branch type MPKI",
                                     "BRANCH_DIRECT_JUMP: 0",
                                     "BRANCH_INDIRECT: 0",
@@ -50,10 +54,10 @@ TEST_CASE("The number of mispredictions modifies the MPKI")
 {
   auto num_misses = 255;
   auto [line_index, miss_type, expected_line] =
-      GENERATE(as<std::tuple<std::size_t, branch_type, std::string>>{}, std::tuple{4, branch_type::BRANCH_DIRECT_JUMP, "BRANCH_DIRECT_JUMP: 255"},
-               std::tuple{5, branch_type::BRANCH_INDIRECT, "BRANCH_INDIRECT: 255"}, std::tuple{6, branch_type::BRANCH_CONDITIONAL, "BRANCH_CONDITIONAL: 255"},
-               std::tuple{7, branch_type::BRANCH_DIRECT_CALL, "BRANCH_DIRECT_CALL: 255"},
-               std::tuple{8, branch_type::BRANCH_INDIRECT_CALL, "BRANCH_INDIRECT_CALL: 255"}, std::tuple{9, branch_type::BRANCH_RETURN, "BRANCH_RETURN: 255"});
+      GENERATE(as<std::tuple<std::size_t, branch_type, std::string>>{}, std::tuple{6, branch_type::BRANCH_DIRECT_JUMP, "BRANCH_DIRECT_JUMP: 255"},
+               std::tuple{7, branch_type::BRANCH_INDIRECT, "BRANCH_INDIRECT: 255"}, std::tuple{8, branch_type::BRANCH_CONDITIONAL, "BRANCH_CONDITIONAL: 255"},
+               std::tuple{9, branch_type::BRANCH_DIRECT_CALL, "BRANCH_DIRECT_CALL: 255"},
+               std::tuple{10, branch_type::BRANCH_INDIRECT_CALL, "BRANCH_INDIRECT_CALL: 255"}, std::tuple{11, branch_type::BRANCH_RETURN, "BRANCH_RETURN: 255"});
 
   cpu_stats given{};
   given.name = "test_cpu";
@@ -67,6 +71,8 @@ TEST_CASE("The number of mispredictions modifies the MPKI")
   std::vector<std::string> expected{"test_cpu cumulative IPC: 2 instructions: 1000 cycles: 500",
                                     "test_cpu Branch Prediction Accuracy: 50% MPKI: 255 Average ROB Occupancy at Mispredict: 0",
                                     "test_cpu FDIP wrong path cycles: 0 stalled waiting for wrong path instrs.: 0",
+                                    "test_cpu WP episodes: 0 ran out of WP instrs.: 0 (-%)",
+                                    "test_cpu WP instrs. pulled per episode (instrs:not ran out/ran out):",
                                     "Branch type MPKI",
                                     "BRANCH_DIRECT_JUMP: 0",
                                     "BRANCH_INDIRECT: 0",
@@ -96,6 +102,8 @@ TEST_CASE("The ROB occupancy modifies the flush penalty")
   std::vector<std::string> expected{"test_cpu cumulative IPC: 2 instructions: 1000 cycles: 500",
                                     "test_cpu Branch Prediction Accuracy: 50% MPKI: 100 Average ROB Occupancy at Mispredict: 10",
                                     "test_cpu FDIP wrong path cycles: 0 stalled waiting for wrong path instrs.: 0",
+                                    "test_cpu WP episodes: 0 ran out of WP instrs.: 0 (-%)",
+                                    "test_cpu WP instrs. pulled per episode (instrs:not ran out/ran out):",
                                     "Branch type MPKI",
                                     "BRANCH_DIRECT_JUMP: 100",
                                     "BRANCH_INDIRECT: 0",
@@ -159,4 +167,19 @@ TEST_CASE("FDIP wrong path cycles are written to JSON")
 
   REQUIRE(b.json().at("fdip wrong path cycles") == 20);
   REQUIRE(b.json().at("fdip wrong path stall cycles") == 15);
+}
+
+TEST_CASE("WP episode statistics are printed")
+{
+  cpu_stats given{};
+  given.name = "test_cpu";
+  given.wp_episodes = 4;
+  given.wp_episodes_ran_out = 1;
+  given.wp_episode_instrs[120] = {0, 1};
+  given.wp_episode_instrs[800] = {3, 0};
+
+  auto lines = champsim::modules::core_module::format_plaintext(given);
+  REQUIRE(std::find(std::begin(lines), std::end(lines), "test_cpu WP episodes: 4 ran out of WP instrs.: 1 (25%)") != std::end(lines));
+  REQUIRE(std::find(std::begin(lines), std::end(lines), "test_cpu WP instrs. pulled per episode (instrs:not ran out/ran out): 120:0/1 800:3/0")
+          != std::end(lines));
 }

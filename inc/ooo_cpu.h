@@ -139,6 +139,8 @@ public:
   // branch
   champsim::chrono::clock::time_point fetch_resume_time{};
   bool on_WP = false;
+  uint64_t wp_instrs_this_episode = 0;  // WP instrs. pulled from the workload source since the last mispredict
+  bool wp_ran_out_this_episode = false; // the workload source ran out of WP instrs. during this episode
   bool perfect_branch_prediction = false; // skip the BTB and branch predictor; every branch is predicted correctly
   bool always_dib_hit = false;            // every instruction hits in the decoded instruction buffer
   std::optional<ooo_model_instr> fdip_peeked_instr;

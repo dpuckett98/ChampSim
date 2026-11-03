@@ -21,6 +21,12 @@ struct cpu_stats {
   uint64_t fdip_wp_cycles = 0;
   uint64_t fdip_wp_stall_cycles = 0;
 
+  // WP episodes (one per mispredict flush), how many of them ran out of WP instrs., and a histogram of the number of WP instrs. each episode
+  // pulled from the workload source: # instrs. -> {episodes that did not run out, episodes that ran out}
+  uint64_t wp_episodes = 0;
+  uint64_t wp_episodes_ran_out = 0;
+  std::map<uint64_t, std::pair<uint64_t, uint64_t>> wp_episode_instrs = {};
+
   champsim::stats::event_counter<branch_type> total_branch_types = {};
   champsim::stats::event_counter<branch_type> branch_type_misses = {};
 

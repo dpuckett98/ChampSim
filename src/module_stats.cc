@@ -76,6 +76,15 @@ std::vector<std::string> champsim::modules::core_module::format_plaintext(const 
   lines.push_back(fmt::format("{} FDIP wrong path cycles: {} stalled waiting for wrong path instrs.: {}", stats.name, stats.fdip_wp_cycles,
                               stats.fdip_wp_stall_cycles));
 
+  lines.push_back(fmt::format("{} WP episodes: {} ran out of WP instrs.: {} ({}%)", stats.name, stats.wp_episodes, stats.wp_episodes_ran_out,
+                              ::print_ratio(100 * stats.wp_episodes_ran_out, stats.wp_episodes)));
+  std::string histogram;
+  for (const auto& [n, counts] : stats.wp_episode_instrs) {
+    if (counts.first != 0 || counts.second != 0)
+      histogram += fmt::format(" {}:{}/{}", n, counts.first, counts.second);
+  }
+  lines.push_back(fmt::format("{} WP instrs. pulled per episode (instrs:not ran out/ran out):{}", stats.name, histogram));
+
   lines.emplace_back("Branch type MPKI");
   for (auto idx : types) {
     lines.push_back(fmt::format("{}: {}", branch_type_names.at(champsim::to_underlying(idx)),

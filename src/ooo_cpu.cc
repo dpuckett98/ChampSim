@@ -146,10 +146,17 @@ void O3_CPU::direct_fdip()
   bool stop_fetch = false;
 
   // the workload source must not be read past its end; returning no instr. halts fetch, just like running out of WP instrs.
-  auto next_from_source = [src = workload_source_pimpl[0]]() -> std::optional<ooo_model_instr> {
+  auto next_from_source = [this, src = workload_source_pimpl[0]]() -> std::optional<ooo_model_instr> {
     if (src->eof())
       return std::nullopt;
-    return src->next_instr();
+    auto instr = src->next_instr();
+    if (on_WP) {
+      if (instr.has_value())
+        ++wp_instrs_this_episode;
+      else
+        wp_ran_out_this_episode = true;
+    }
+    return instr;
   };
 
   // while bandwidth available & fetch isn't stopped (fetch stopped when the trace runs out of WP instrs.)
@@ -325,6 +332,18 @@ void O3_CPU::do_flush(ooo_model_instr& mispredicted_branch)
   this->fetch_resume_time = this->current_time + BRANCH_MISPREDICT_PENALTY;
   workload_source_pimpl[0]->flush();
   on_WP = false;
+
+  ++sim_stats.wp_episodes;
+  auto& episode_counts = sim_stats.wp_episode_instrs[wp_instrs_this_episode];
+  if (wp_ran_out_this_episode) {
+    ++sim_stats.wp_episodes_ran_out;
+    ++episode_counts.second;
+  } else {
+    ++episode_counts.first;
+  }
+  wp_instrs_this_episode = 0;
+  wp_ran_out_this_episode = false;
+
   fdip_peeked_instr.reset(); // the peeked instr. is on the WP; don't let it leak onto the CP after the flush
   //fmt::print("[FLUSH] instr_id: {} ip: {} cycle: {}\n", mispredicted_branch.instr_id, mispredicted_branch.ip, current_time.time_since_epoch() / clock_period);
 
