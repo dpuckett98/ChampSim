@@ -84,11 +84,13 @@ void folded_shift_register<WORD_LEN>::push_back(bool ins)
     return ((x << 1) | lsb) & champsim::msl::bitmask(VALUE_LEN);
   };
 
-  // The MSBs to be passed to the next value.
-  // The vector is initialized with the new bit, so we get our shift for free.
-  std::vector<value_type> msbs = {ins ? value_type{0x1} : value_type{0x0}};
-  std::transform(std::cbegin(words), std::cend(words), std::back_inserter(msbs), extract_msb);
-  std::transform(std::cbegin(words), std::cend(words), std::begin(msbs), std::begin(words), shift_and_apply_lsb);
+  // Shift each word left by one, carrying each word's old MSB into the next word's LSB. The new bit is the first word's carry-in.
+  value_type carry = ins ? value_type{0x1} : value_type{0x0};
+  for (auto& word : words) {
+    const value_type msb = extract_msb(word);
+    word = shift_and_apply_lsb(word, carry);
+    carry = msb;
+  }
 
   // Don't apply the mask if the last value is full-width
   if (last_value_mask != value_type{}) {
