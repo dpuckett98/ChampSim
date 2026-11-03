@@ -1156,7 +1156,11 @@ class wrong_path_tracereader
         uint64_t _;
         for (uint64_t ipos = 0; ipos < num_instr; ipos++) {
           const overlay_key key(template_id, ipos);
-          retvec.emplace_back(generate_instruction<true>(pc, instructions[ipos], wp_state.value().overlay[key], _));
+          // Fields the WP never changed aren't in the WP overlay (the trace has no delta for them), so they hold the CP value
+          std::map<uint64_t, std::bitset<512>> fields = wp_state.value().overlay[key];
+          if (const auto cp_iter = overlay.find(key); cp_iter != overlay.end())
+            fields.insert(cp_iter->second.begin(), cp_iter->second.end()); // insert doesn't overwrite WP values
+          retvec.emplace_back(generate_instruction<true>(pc, instructions[ipos], fields, _));
           retvec.back().set_wp_event_flags(); // Mark as wrong path non-faulting instruction
 
           if (faulting_instructions.find(i) != faulting_instructions.end()) {
@@ -1416,8 +1420,11 @@ class wrong_path_tracereader
     // pending_overlay, if given, holds values that take precedence over overlay_to_use (e.g. WP deltas that haven't been applied to overlay_to_use yet)
     // relative_to, if given, holds base values that the IFRAME values are relative to, i.e. the expected value is (stored value - base value). Fields missing
     // from relative_to are compared as absolute values
+    // fallback_overlay, if given, is used for fields missing from both pending_overlay and overlay_to_use (e.g. the CP overlay for WP fields the WP never
+    // changed)
     constexpr void validate_overlay(const OverlayType& overlay_to_use, const delta_section& delta_sec, const uint32_t template_id,
-                                    const OverlayType* pending_overlay = nullptr, const OverlayType* relative_to = nullptr) const
+                                    const OverlayType* pending_overlay = nullptr, const OverlayType* relative_to = nullptr,
+                                    const OverlayType* fallback_overlay = nullptr) const
     {
       if (header.templates.find(template_id) == header.templates.end())
         throw std::runtime_error(fmt::format("[ERROR] Template #{} does not exist in the header. Validate failed!", template_id));
@@ -1436,6 +1443,8 @@ class wrong_path_tracereader
         const std::bitset<512>* stored = pending_overlay != nullptr ? lookup(*pending_overlay, key, delta.fid) : nullptr;
         if (stored == nullptr)
           stored = lookup(overlay_to_use, key, delta.fid);
+        if (stored == nullptr && fallback_overlay != nullptr)
+          stored = lookup(*fallback_overlay, key, delta.fid);
         if (stored == nullptr) {
           const std::bitset<512>* cp_value = lookup(overlay, key, delta.fid);
           throw iframe_mismatch_error(fmt::format("[ERROR] IFRAME validation failed! Overlay key {} not found in the overlay map\n\tFID = {}, Expected Value = {:#x}, CP Value = {}",
@@ -1604,7 +1613,7 @@ class wrong_path_tracereader
 
             const std::string where = fmt::format("WP validation of chain index {} of {} (template IDs: {})", i, num_entries, wp_chain.template_ids);
             try {
-              validate_overlay(wp_state.value().overlay, wp_chain.wp_deltas[i], current_template_id, &pending, relative_to);
+              validate_overlay(wp_state.value().overlay, wp_chain.wp_deltas[i], current_template_id, &pending, relative_to, &overlay);
             } catch (const iframe_mismatch_error& e) {
               throw with_context(e, where + "\n" + describe_wp_contributions(e.template_id, e.ipos, e.fid, wp_chain));
             } catch (const std::runtime_error& e) {
