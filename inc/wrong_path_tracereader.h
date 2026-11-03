@@ -22,7 +22,6 @@
 
 #include <algorithm>
 #include <array>
-#include <bitset>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -204,24 +203,21 @@ class wrong_path_tracereader
       return retval;
     }
 
-    // Parses a SLEB_WIDE into std::bitset
-    [[nodiscard]] constexpr std::bitset<512> sleb_wide_decoder(const std::vector<char>& chunks) const noexcept
+    // Parses a SLEB_WIDE (up to 512 bits) into its low 64 bits, sign-extended. Field values are only ever added, subtracted, and compared, and the low 64 bits
+    // of those results depend only on the low 64 bits of the operands, so keeping just the low 64 bits is exact for every field ChampSim reads
+    [[nodiscard]] constexpr uint64_t sleb_wide_decoder(const std::vector<char>& chunks) const noexcept
     {
+      uint64_t value = 0;
       std::size_t bit_idx = 0;
-      const bool msb = static_cast<bool>(chunks.back() & 0x40);
-
-      std::bitset<512> parsed_bits;
-      parsed_bits.reset();
-      for (auto i = chunks.rbegin(); i != chunks.rend(); i++) {
-        const uint8_t chunk = static_cast<uint8_t>(*i & 0x7f);
-        parsed_bits <<= 7;
-        parsed_bits |= chunk;
+      for (const char byte : chunks) {
+        if (bit_idx < 64)
+          value |= static_cast<uint64_t>(static_cast<uint8_t>(byte) & 0x7f) << bit_idx;
         bit_idx += 7;
       }
-      while (bit_idx < 512)
-        parsed_bits[bit_idx++] = msb; // Sign extension
+      if (bit_idx < 64 && (chunks.back() & 0x40))
+        value |= ~uint64_t{0} << bit_idx; // Sign extension
 
-      return parsed_bits;
+      return value;
     }
 
   public:
@@ -275,7 +271,7 @@ class wrong_path_tracereader
     }
 
     // Reads a SLEB_WIDE from the stream
-    [[nodiscard]] constexpr std::bitset<512> parse_sleb_wide()
+    [[nodiscard]] constexpr uint64_t parse_sleb_wide()
     {
       std::vector<char> chunks;
       while (const auto byte = decompress()) {
@@ -749,10 +745,13 @@ class wrong_path_tracereader
     bool last_cp_branch_taken = false;
     uint64_t last_cp_branch_target = 0xdeadbeef;
 
+    // A trace field's value: the low 64 bits of the (up to 512-bit) value in the trace. See sleb_wide_decoder
+    using field_value = uint64_t;
+
     struct field_delta_section {
       uint64_t ipos;
       uint64_t fid;
-      std::bitset<512> delta;
+      field_value delta;
       std::optional<uint64_t> ext_payload;
     };
 
@@ -790,7 +789,7 @@ class wrong_path_tracereader
     const uint8_t cpu;
 
     // Note: The trace contains register file values but ChampSim doesn't care about them. We maintain this regfile for posterity's sake only
-    using RegFileType = std::map<uint64_t, std::map<uint64_t, std::bitset<512>>>;
+    using RegFileType = std::map<uint64_t, std::map<uint64_t, field_value>>;
     RegFileType regfile;
 
     // Persistent overlay
@@ -803,7 +802,7 @@ class wrong_path_tracereader
       std::string format() const noexcept { return fmt::format("(Template ID = {}, Instruction Position = {})", template_id, ipos); }
     };
 
-    using OverlayType = std::map<overlay_key, std::map<uint64_t, std::bitset<512>>>;
+    using OverlayType = std::map<overlay_key, std::map<uint64_t, field_value>>;
     OverlayType overlay; // Each overlay value is a fid -> delta map
 
     struct wp_state_type {
@@ -834,37 +833,6 @@ class wrong_path_tracereader
     };
     std::map<uint32_t, asid_index_type> observed_asids; // Tracks the observed ASIDs so far
 
-    template <std::size_t width>
-    [[nodiscard]] constexpr std::bitset<width> add_bitset(std::bitset<width> b1, std::bitset<width> b2) const noexcept
-    {
-      std::bitset<width> retval(0);
-      constexpr uint64_t bitmask = 0x00000000'ffffffff;
-      int64_t carry = 0;
-      int64_t bits_left = static_cast<int64_t>(width);
-      while (bits_left > 0) {
-        const uint64_t temp_b1 = (b1 & std::bitset<width>(bitmask)).to_ullong();
-        int64_t b1_chunk = 0;
-        std::memcpy(&b1_chunk, &temp_b1, 4);
-
-        const uint64_t temp_b2 = (b2 & std::bitset<width>(bitmask)).to_ullong();
-        int64_t b2_chunk = 0;
-        std::memcpy(&b2_chunk, &temp_b2, 4);
-
-        const int64_t partial_sum = b1_chunk + b2_chunk + carry;
-        const uint32_t retval_chunk = partial_sum & bitmask;
-        carry = (partial_sum & 0x1'00000000) >> 32;
-
-        std::bitset<width> new_bits(retval_chunk);
-        new_bits <<= (width - bits_left);
-        retval |= new_bits;
-
-        b1 >>= 32;
-        b2 >>= 32;
-        bits_left -= (4 * 8);
-      }
-      return retval;
-    }
-
     constexpr void verify_integrity()
     {
       uint32_t trace_magic_bytes;
@@ -882,27 +850,12 @@ class wrong_path_tracereader
 
     template <bool wrong_path = false>
     [[nodiscard]] constexpr ooo_model_instr generate_instruction(uint64_t& instruction_pc, const header_wrapper::Instruction& instruction_template,
-                                                                 const std::map<uint64_t, std::bitset<512>>& deltas, uint64_t& next_pc)
+                                                                 const std::map<uint64_t, field_value>& deltas, uint64_t& next_pc)
     {
-      // Useful functions
-      const auto bitset_to_uint64_t = [] [[nodiscard]] (const std::bitset<512>& bits) -> uint64_t {
-        try {
-          return static_cast<uint64_t>(bits.to_ullong());
-        } catch (const std::overflow_error& er) {
-          throw std::runtime_error(fmt::format("[ERROR] Can't cast bitset with value {} to uint64_t", bits.to_string()));
-        }
-      };
-
-      // Useful functions
-      const auto bitset_to_int64_t = [] [[nodiscard]] (const std::bitset<512>& bits) -> uint64_t {
-        try {
-          const uint64_t val = static_cast<uint64_t>(bits.to_ullong());
-          int64_t retval = 0;
-          std::memcpy(&retval, &val, sizeof(uint64_t));
-          return retval;
-        } catch (const std::overflow_error& er) {
-          throw std::runtime_error(fmt::format("[ERROR] Can't cast bitset with value {} to uint64_t", bits.to_string()));
-        }
+      const auto to_int64_t = [] [[nodiscard]] (const field_value value) -> int64_t {
+        int64_t retval = 0;
+        std::memcpy(&retval, &value, sizeof(retval));
+        return retval;
       };
 
       const auto extract_suffix = [] [[nodiscard]] (const std::string& str, const char* prefix) constexpr noexcept -> uint64_t {
@@ -931,16 +884,16 @@ class wrong_path_tracereader
         const std::string& fid_name = header.ids.at("field_id").right.at(fid);
 	//fmt::print(stderr, "{} {} {}\n", fid_name, fid, delta);
         if (fid_name == "CST_FID_N_LOADS") {
-          n_loads = bitset_to_uint64_t(delta);
+          n_loads = delta;
         } else if (fid_name == "CST_FID_N_STORES") {
-          n_stores = bitset_to_uint64_t(delta);
+          n_stores = delta;
         } else if (fid_name == "CST_FID_METAFLAGS") {
           /* Not implemented */
         } else if (fid_name.rfind("CST_FID_LOAD_ADDR", 0) == 0) {
-	  src_mem.emplace_back(bitset_to_uint64_t(delta));
+	  src_mem.emplace_back(delta);
           max_observed_load_count = std::max(max_observed_load_count, extract_suffix(fid_name, "CST_FID_LOAD_ADDR"));
         } else if (fid_name.rfind("CST_FID_STORE_ADDR", 0) == 0) {
-          dst_mem.emplace_back(bitset_to_uint64_t(delta));
+          dst_mem.emplace_back(delta);
           max_observed_store_count = std::max(max_observed_store_count, extract_suffix(fid_name, "CST_FID_STORE_ADDR"));
         } else if (fid_name.rfind("CST_FID_LOAD_DATA", 0) == 0) {
           /* Not implemented */
@@ -981,21 +934,21 @@ class wrong_path_tracereader
         } else if (fid_name == "CST_FID_INSN_BYTES_HI") {
           /* Not implemented */
         } else if (fid_name == "CST_FID_INSN_OPCODE") {
-          opcode_id = static_cast<uint8_t>(bitset_to_uint64_t(delta));
+          opcode_id = static_cast<uint8_t>(delta);
         } else if (fid_name == "CST_FID_INSN_BRANCH_TYPE") {
-          branch_type_id = static_cast<uint8_t>(bitset_to_uint64_t(delta));
+          branch_type_id = static_cast<uint8_t>(delta);
         } else if (fid_name == "CST_FID_INSN_FLAGS") {
           /* Not implemented */
         } else if (fid_name == "CST_FID_INSN_IMMEDIATE") {
           /* Not implemented */
         } else if (fid_name == "CST_FID_INSN_SIZE") {
-          instr_size = static_cast<uint8_t>(bitset_to_uint64_t(delta));
+          instr_size = static_cast<uint8_t>(delta);
         } else if (fid_name == "CST_FID_EXTENDED") {
           /* Not implemented */
         } else if (fid_name == "CST_FID_BRANCH_TAKEN") {
-          branch_taken = (bitset_to_uint64_t(delta) == 1);
+          branch_taken = (delta == 1);
         } else if (fid_name == "CST_FID_BRANCH_TARGET") {
-          branch_target = static_cast<uint64_t>(static_cast<int64_t>(instruction_pc) + bitset_to_int64_t(delta));
+          branch_target = static_cast<uint64_t>(static_cast<int64_t>(instruction_pc) + to_int64_t(delta));
         } else {
           throw std::runtime_error(fmt::format("[ERROR] Unknown FID: {} detected", fid_name));
         }
@@ -1074,11 +1027,11 @@ class wrong_path_tracereader
             overlay_to_use[key][delta.fid] = delta.delta;
 	  } else {
             //fmt::print(stderr, "{},{},{}\n Previous value from backup overlay {}\ndelta {}\n", template_id, delta.ipos, delta.fid, backup_overlay.value().get()[key][delta.fid], delta.delta);
-	    overlay_to_use[key][delta.fid] = add_bitset(backup_overlay.value().get()[key][delta.fid], delta.delta);
+	    overlay_to_use[key][delta.fid] = backup_overlay.value().get()[key][delta.fid] + delta.delta;
 	  }
 	} else {
 	  //fmt::print(stderr, "{},{},{}\n Previous value {}\ndelta {}\n", template_id, delta.ipos, delta.fid, overlay_to_use[key][delta.fid], delta.delta);
-          overlay_to_use[key][delta.fid] = add_bitset(overlay_to_use[key][delta.fid], delta.delta);
+          overlay_to_use[key][delta.fid] = overlay_to_use[key][delta.fid] + delta.delta;
 	}
       }
     }
@@ -1157,7 +1110,7 @@ class wrong_path_tracereader
         for (uint64_t ipos = 0; ipos < num_instr; ipos++) {
           const overlay_key key(template_id, ipos);
           // Fields the WP never changed aren't in the WP overlay (the trace has no delta for them), so they hold the CP value
-          std::map<uint64_t, std::bitset<512>> fields = wp_state.value().overlay[key];
+          std::map<uint64_t, field_value> fields = wp_state.value().overlay[key];
           if (const auto cp_iter = overlay.find(key); cp_iter != overlay.end())
             fields.insert(cp_iter->second.begin(), cp_iter->second.end()); // insert doesn't overwrite WP values
           retvec.emplace_back(generate_instruction<true>(pc, instructions[ipos], fields, _));
@@ -1223,12 +1176,13 @@ class wrong_path_tracereader
       }
     }
 
-    [[nodiscard]] constexpr std::bitset<512> cast_to_bitset(const std::vector<char>& bytes) const noexcept
+    // The low 64 bits of a big-endian byte string
+    [[nodiscard]] constexpr field_value cast_to_field_value(const std::vector<char>& bytes) const noexcept
     {
-      std::bitset<512> retval;
+      field_value retval = 0;
       for (const auto& b : bytes) {
         retval <<= 8;
-        retval |= std::bitset<512>(b);
+        retval |= static_cast<uint8_t>(b);
       }
       return retval;
     }
@@ -1241,7 +1195,7 @@ class wrong_path_tracereader
         const uint8_t gen_id = static_cast<uint8_t>(compressed_body_stream.read());
         const uint8_t width = static_cast<uint8_t>(compressed_body_stream.read());
         const std::vector<char> bytes = compressed_body_stream.read_bytes(width);
-        regfile[thread_id][gen_id] = cast_to_bitset(bytes);
+        regfile[thread_id][gen_id] = cast_to_field_value(bytes);
       }
     }
 
@@ -1414,9 +1368,6 @@ class wrong_path_tracereader
       }
     };
 
-    // Low 64 bits of a 512-bit value, for printing
-    [[nodiscard]] static constexpr uint64_t bitset_low_bits(const std::bitset<512>& bits) { return (bits & std::bitset<512>(~uint64_t{0})).to_ullong(); }
-
     // pending_overlay, if given, holds values that take precedence over overlay_to_use (e.g. WP deltas that haven't been applied to overlay_to_use yet)
     // relative_to, if given, holds base values that the IFRAME values are relative to, i.e. the expected value is (stored value - base value). Fields missing
     // from relative_to are compared as absolute values
@@ -1429,7 +1380,7 @@ class wrong_path_tracereader
       if (header.templates.find(template_id) == header.templates.end())
         throw std::runtime_error(fmt::format("[ERROR] Template #{} does not exist in the header. Validate failed!", template_id));
 
-      const auto lookup = [](const OverlayType& o, const overlay_key& key, const uint64_t fid) -> const std::bitset<512>* {
+      const auto lookup = [](const OverlayType& o, const overlay_key& key, const uint64_t fid) -> const field_value* {
         const auto key_iter = o.find(key);
         if (key_iter == o.end())
           return nullptr;
@@ -1440,32 +1391,32 @@ class wrong_path_tracereader
       const auto& deltas = delta_sec.records;
       for (const auto& delta : deltas) {
         const overlay_key key(template_id, delta.ipos);
-        const std::bitset<512>* stored = pending_overlay != nullptr ? lookup(*pending_overlay, key, delta.fid) : nullptr;
+        const field_value* stored = pending_overlay != nullptr ? lookup(*pending_overlay, key, delta.fid) : nullptr;
         if (stored == nullptr)
           stored = lookup(overlay_to_use, key, delta.fid);
         if (stored == nullptr && fallback_overlay != nullptr)
           stored = lookup(*fallback_overlay, key, delta.fid);
         if (stored == nullptr) {
-          const std::bitset<512>* cp_value = lookup(overlay, key, delta.fid);
+          const field_value* cp_value = lookup(overlay, key, delta.fid);
           throw iframe_mismatch_error(fmt::format("[ERROR] IFRAME validation failed! Overlay key {} not found in the overlay map\n\tFID = {}, Expected Value = {:#x}, CP Value = {}",
-                                                  key.format(), delta.fid, bitset_low_bits(delta.delta),
-                                                  cp_value != nullptr ? fmt::format("{:#x}", bitset_low_bits(*cp_value)) : std::string{"(none)"}),
+                                                  key.format(), delta.fid, delta.delta,
+                                                  cp_value != nullptr ? fmt::format("{:#x}", *cp_value) : std::string{"(none)"}),
                                       template_id, delta.ipos, delta.fid);
         }
 
-        std::bitset<512> stored_value = *stored;
-        const std::bitset<512>* base = relative_to != nullptr ? lookup(*relative_to, key, delta.fid) : nullptr;
+        field_value stored_value = *stored;
+        const field_value* base = relative_to != nullptr ? lookup(*relative_to, key, delta.fid) : nullptr;
         if (base != nullptr)
-          stored_value = add_bitset(stored_value, add_bitset(~(*base), std::bitset<512>(1))); // stored - base
+          stored_value = stored_value - *base;
 
         if (stored_value != delta.delta) {
           // Report the CP value too, if there is one, to help diagnose relative values
-          const std::bitset<512>* cp_value = lookup(overlay, key, delta.fid);
+          const field_value* cp_value = lookup(overlay, key, delta.fid);
           throw iframe_mismatch_error(
               fmt::format("[ERROR] IFRAME validation failed! Delta value mismatch for key {} and FID {}{}\n\tExpected Value = {:#x}\n\tStored Value = {:#x}{}\n\tCP Value = {}",
-                          key.format(), delta.fid, base != nullptr ? " (relative)" : "", bitset_low_bits(delta.delta), bitset_low_bits(stored_value),
-                          base != nullptr ? fmt::format(" (absolute {:#x} - base {:#x})", bitset_low_bits(*stored), bitset_low_bits(*base)) : std::string{},
-                          cp_value != nullptr ? fmt::format("{:#x}", bitset_low_bits(*cp_value)) : std::string{"(none)"}),
+                          key.format(), delta.fid, base != nullptr ? " (relative)" : "", delta.delta, stored_value,
+                          base != nullptr ? fmt::format(" (absolute {:#x} - base {:#x})", *stored, *base) : std::string{},
+                          cp_value != nullptr ? fmt::format("{:#x}", *cp_value) : std::string{"(none)"}),
               template_id, delta.ipos, delta.fid);
         }
       }
@@ -1515,7 +1466,7 @@ class wrong_path_tracereader
               continue;
             const auto cp_key_iter = overlay.find(key);
             const bool in_cp = cp_key_iter != overlay.end() && cp_key_iter->second.find(delta.fid) != cp_key_iter->second.end();
-            (*previous_occurrence)[key][delta.fid] = in_cp ? cp_key_iter->second.at(delta.fid) : std::bitset<512>(0);
+            (*previous_occurrence)[key][delta.fid] = in_cp ? cp_key_iter->second.at(delta.fid) : field_value{0};
           }
         }
 
@@ -1534,7 +1485,7 @@ class wrong_path_tracereader
         const auto key_iter = o.find(key);
         if (key_iter == o.end() || key_iter->second.find(fid) == key_iter->second.end())
           return "(none)";
-        return fmt::format("{:#x}", bitset_low_bits(key_iter->second.at(fid)));
+        return fmt::format("{:#x}", key_iter->second.at(fid));
       };
 
       std::string retval = fmt::format("\tContributions to template {} ipos {} FID {}:\n\t\tWP overlay value before chain = {}\n\t\tCP value = {}", template_id,
@@ -1554,7 +1505,7 @@ class wrong_path_tracereader
         std::string contribution = "no delta";
         for (const auto& delta : entry_chain.wp_deltas[j].records)
           if (delta.ipos == ipos && delta.fid == fid)
-            contribution = fmt::format("delta {:#x}", bitset_low_bits(delta.delta));
+            contribution = fmt::format("delta {:#x}", delta.delta);
         retval += fmt::format("\n\t\tEntry chain index {}: {}", j, contribution);
       }
       for (std::size_t j = 0; j < iframe_chain.num_wp; j++) {
@@ -1563,7 +1514,7 @@ class wrong_path_tracereader
         std::string value = "no value";
         for (const auto& delta : iframe_chain.wp_deltas[j].records)
           if (delta.ipos == ipos && delta.fid == fid)
-            value = fmt::format("{:#x}", bitset_low_bits(delta.delta));
+            value = fmt::format("{:#x}", delta.delta);
         retval += fmt::format("\n\t\tIFRAME chain index {}: {}", j, value);
       }
       return retval;
