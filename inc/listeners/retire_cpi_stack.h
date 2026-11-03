@@ -1,0 +1,58 @@
+#ifndef RETIRE_CPI_STACK_H
+#define RETIRE_CPI_STACK_H
+
+#include <array>
+#include <cstdint>
+#include <deque>
+#include <iostream>
+#include <string>
+#include <vector>
+
+#include "instruction.h"
+#include "modules.h"
+
+namespace champsim
+{
+/**
+ * Listener that builds a top-level CPI stack at the retire stage. Every core cycle is put in exactly one category:
+ * - retiring: at least one instruction retired;
+ * - mis-speculating: nothing retired because the core is recovering from a misprediction, i.e. the ROB is empty and no correct-path instruction has been
+ *   dispatched since the flush (or, defensively, the ROB head is a wrong-path instruction);
+ * - stalled: nothing retired because the ROB head (a correct-path instruction) hasn't completed;
+ * - drained: nothing retired because the ROB is empty and the core isn't recovering from a misprediction, i.e. the front end isn't supplying instructions.
+ *
+ * Counts reset at the start of each phase and are printed for each core at the end of every non-warmup phase.
+ *
+ * Model name: ``RETIRE_CPI_STACK``. No parameters.
+ */
+class retire_cpi_stack : public champsim::modules::listener
+{
+public:
+  enum category : std::size_t { RETIRING, MIS_SPECULATING, STALLED, DRAINED, NUM_CATEGORIES };
+  static constexpr std::array<const char*, NUM_CATEGORIES> category_names{"retiring", "mis-speculating", "stalled", "drained"};
+
+  struct counts {
+    std::array<uint64_t, NUM_CATEGORIES> cycles{};
+    uint64_t instrs = 0;
+
+    [[nodiscard]] uint64_t total_cycles() const;
+  };
+
+  std::ostream* std_out = &std::cout;
+  std::vector<counts> per_cpu;
+
+  explicit retire_cpi_stack(champsim::modules::ModuleBuilder builder);
+
+  // The category a retire-stage cycle belongs to
+  [[nodiscard]] static category classify(std::size_t num_retired, const std::deque<ooo_model_instr>& rob, bool recovering_from_mispredict);
+
+  // The printed lines for one core's counts
+  [[nodiscard]] static std::vector<std::string> format(uint32_t cpu, const counts& c);
+
+  void begin_phase(bool is_warmup) override;
+  void end_phase(bool is_warmup) override;
+  void retire_cycle(uint32_t cpu, uint64_t cycle, std::size_t num_retired, const std::deque<ooo_model_instr>& rob, bool recovering_from_mispredict) override;
+};
+} // namespace champsim
+
+#endif
