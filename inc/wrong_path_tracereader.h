@@ -438,7 +438,7 @@ class wrong_path_tracereader
       const auto buffer = compressed_header_stream.read_bytes(bytes_to_read);
       std::memcpy(&(prolog.fixed_size), std::data(buffer), bytes_to_read);
 
-      fmt::print(stderr, "Magic = {:X}\nISA = {:X}\nFlags = {:#010b}\n", prolog.fixed_size.magic_bytes, prolog.fixed_size.isa, prolog.fixed_size.flags);
+      fmt::print("Magic = {:X}\nISA = {:X}\nFlags = {:#010b}\n", prolog.fixed_size.magic_bytes, prolog.fixed_size.isa, prolog.fixed_size.flags);
 
       using namespace wrong_path_trace_constants;
       if (prolog.fixed_size.magic_bytes != magic_bytes)
@@ -452,7 +452,7 @@ class wrong_path_tracereader
       prolog.total_target_instructions = compressed_header_stream.parse_uleb();
       prolog.simpoint_weight = compressed_header_stream.parse_f64();
 
-      fmt::print(stderr,
+      fmt::print(
                  "Start Instructions = {}\nWarmup Instructions = {}\n"
                  "Total Target Instructions = {}\nSimPoint Weight = {}\n",
                  prolog.start_instructions, prolog.warmup_instructions, prolog.total_target_instructions, prolog.simpoint_weight);
@@ -471,7 +471,7 @@ class wrong_path_tracereader
       prolog.comment = compressed_header_stream.parse_string();
       prolog.target_name = compressed_header_stream.parse_string();
 
-      fmt::print(stderr, "Command = {}\nDatetime = {}\nComment = {}\nTarget Name = {}\n", prolog.command, prolog.datetime, prolog.comment, prolog.target_name);
+      fmt::print("Command = {}\nDatetime = {}\nComment = {}\nTarget Name = {}\n", prolog.command, prolog.datetime, prolog.comment, prolog.target_name);
     }
 
     constexpr void parse_encoding_maps()
@@ -516,7 +516,7 @@ class wrong_path_tracereader
     {
       prolog.warmup_end_arch_instructions = compressed_header_stream.parse_uleb();
 
-      fmt::print(stderr, "Warmup End Architecture Instructions = {}\n", prolog.warmup_end_arch_instructions);
+      fmt::print("Warmup End Architecture Instructions = {}\n", prolog.warmup_end_arch_instructions);
     }
 
     [[nodiscard]] constexpr Dependency parse_dependency(const uint8_t n_dst, const uint8_t max_dep_stores, const uint8_t max_dep_loads)

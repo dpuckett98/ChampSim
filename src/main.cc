@@ -126,7 +126,7 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
 
   // Print config description if present
   if (config_json.contains("_description") && config_json["_description"].is_string()) {
-    fmt::print(stderr, "\nConfig: {}\n\n", config_json["_description"].get<std::string>());
+    fmt::print("\nConfig: {}\n\n", config_json["_description"].get<std::string>());
   }
 
   // Parse config for system parameters
