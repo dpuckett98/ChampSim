@@ -31,6 +31,7 @@
 
 #include "access_type.h"
 #include "address.h"
+#include "backend_stall.h"
 #include "block.h"
 #include "champsim.h"
 #include "instruction.h"
@@ -1182,11 +1183,11 @@ struct module_base {
     }
 
     // Called every core cycle at the dispatch stage, after dispatch. num_dispatched instrs. (num_wp_dispatched of them wrong-path) moved into the ROB, and
-    // dispatch_buffer holds what remains, so when nothing was dispatched its head is the oldest instr. waiting to dispatch. backend_full is true when that head
-    // doesn't fit in the ROB, LQ, or SQ.
+    // dispatch_buffer holds what remains, so when nothing was dispatched its head is the oldest instr. waiting to dispatch. backend_stall says which of the
+    // ROB, LQ, and SQ that head doesn't fit in (none when the dispatch buffer is empty).
     virtual void dispatch_cycle([[maybe_unused]] uint32_t cpu, [[maybe_unused]] uint64_t cycle, [[maybe_unused]] std::size_t num_dispatched,
                                 [[maybe_unused]] std::size_t num_wp_dispatched, [[maybe_unused]] const std::deque<ooo_model_instr>& dispatch_buffer,
-                                [[maybe_unused]] bool backend_full, [[maybe_unused]] bool recovering_from_mispredict)
+                                [[maybe_unused]] champsim::backend_stall backend_stall, [[maybe_unused]] bool recovering_from_mispredict)
     {
     }
 

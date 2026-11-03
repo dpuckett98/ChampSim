@@ -45,10 +45,10 @@ inline void retire_cycle(uint32_t cpu, uint64_t cycle, std::size_t num_retired, 
 }
 
 inline void dispatch_cycle(uint32_t cpu, uint64_t cycle, std::size_t num_dispatched, std::size_t num_wp_dispatched, const std::deque<ooo_model_instr>& dispatch_buffer,
-                           bool backend_full, bool recovering_from_mispredict)
+                           champsim::backend_stall backend_stall, bool recovering_from_mispredict)
 {
   for (auto* listener : active())
-    listener->dispatch_cycle(cpu, cycle, num_dispatched, num_wp_dispatched, dispatch_buffer, backend_full, recovering_from_mispredict);
+    listener->dispatch_cycle(cpu, cycle, num_dispatched, num_wp_dispatched, dispatch_buffer, backend_stall, recovering_from_mispredict);
 }
 
 inline void issue_cycle(uint32_t cpu, uint64_t cycle, std::size_t num_issued, std::size_t num_wp_issued, const std::deque<ooo_model_instr>& rob, bool backend_full,

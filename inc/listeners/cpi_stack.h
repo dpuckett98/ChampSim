@@ -7,6 +7,7 @@
 #include <iostream>
 #include <numeric>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <fmt/core.h>
 #include <fmt/ostream.h>
@@ -54,17 +55,17 @@ public:
   [[nodiscard]] std::vector<std::string> format(uint32_t cpu, const counts& c) const
   {
     const auto total = c.total_cycles();
-    const auto ratio = [](uint64_t num, uint64_t denom) {
-      return denom > 0 ? fmt::format("{:.4g}", static_cast<double>(num) / static_cast<double>(denom)) : std::string{"-"};
-    };
-
     std::vector<std::string> lines;
     lines.push_back(fmt::format("CPU {} {} CPI stack: cycles: {} instructions: {} CPI: {}", cpu, stage_name, total, c.instrs, ratio(total, c.instrs)));
-    for (std::size_t i = 0; i < N; ++i) {
-      lines.push_back(fmt::format("CPU {} {} {}: cycles: {} ({}%) CPI: {}", cpu, stage_name, category_names[i], c.cycles[i], ratio(100 * c.cycles[i], total),
-                                  ratio(c.cycles[i], c.instrs)));
-    }
+    for (std::size_t i = 0; i < N; ++i)
+      lines.push_back(format_category(cpu, category_names[i], c.cycles[i], c));
     return lines;
+  }
+
+  // The printed line for a category (or sub-category) of cycles out of a core's counts
+  [[nodiscard]] std::string format_category(uint32_t cpu, std::string_view name, uint64_t cycles, const counts& c) const
+  {
+    return fmt::format("CPU {} {} {}: cycles: {} ({}%) CPI: {}", cpu, stage_name, name, cycles, ratio(100 * cycles, c.total_cycles()), ratio(cycles, c.instrs));
   }
 
   void begin_phase([[maybe_unused]] bool is_warmup) override { std::fill(std::begin(per_cpu), std::end(per_cpu), counts{}); }
@@ -80,6 +81,11 @@ public:
   }
 
 private:
+  [[nodiscard]] static std::string ratio(uint64_t num, uint64_t denom)
+  {
+    return denom > 0 ? fmt::format("{:.4g}", static_cast<double>(num) / static_cast<double>(denom)) : std::string{"-"};
+  }
+
   std::string stage_name;
   std::array<const char*, N> category_names;
 };

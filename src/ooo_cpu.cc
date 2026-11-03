@@ -635,15 +635,20 @@ long O3_CPU::decode_instruction()
 
 void O3_CPU::do_dib_update(const ooo_model_instr& instr) { DIB.fill(instr.ip); }
 
-bool O3_CPU::backend_has_room(const ooo_model_instr& instr) const
+champsim::backend_stall O3_CPU::backend_stall_for(const ooo_model_instr& instr) const
 {
-  return std::size(ROB) != ROB_SIZE
-         && ((std::size_t)std::count_if(std::begin(LQ), std::end(LQ), [](const auto& lq_entry) { return !lq_entry.has_value(); })
-             >= std::size(instr.source_memory))
-         && ((std::size(instr.destination_memory) + std::size(SQ)) <= SQ_SIZE);
+  const auto free_lq = static_cast<std::size_t>(std::count_if(std::begin(LQ), std::end(LQ), [](const auto& lq_entry) { return !lq_entry.has_value(); }));
+  return {std::size(ROB) >= ROB_SIZE, free_lq < std::size(instr.source_memory), (std::size(instr.destination_memory) + std::size(SQ)) > SQ_SIZE};
 }
 
-bool O3_CPU::backend_full() const { return !std::empty(DISPATCH_BUFFER) && !backend_has_room(DISPATCH_BUFFER.front()); }
+champsim::backend_stall O3_CPU::dispatch_stall() const
+{
+  return std::empty(DISPATCH_BUFFER) ? champsim::backend_stall{} : backend_stall_for(DISPATCH_BUFFER.front());
+}
+
+bool O3_CPU::backend_has_room(const ooo_model_instr& instr) const { return !backend_stall_for(instr).any(); }
+
+bool O3_CPU::backend_full() const { return dispatch_stall().any(); }
 
 long O3_CPU::dispatch_instruction()
 {
@@ -667,7 +672,7 @@ long O3_CPU::dispatch_instruction()
   }
 
   champsim::listeners::dispatch_cycle(cpu, current_time.time_since_epoch() / clock_period, static_cast<std::size_t>(available_dispatch_bandwidth.amount_consumed()),
-                                      num_wp_dispatched, DISPATCH_BUFFER, backend_full(), recovering_from_mispredict);
+                                      num_wp_dispatched, DISPATCH_BUFFER, dispatch_stall(), recovering_from_mispredict);
 
   return available_dispatch_bandwidth.amount_consumed();
 }

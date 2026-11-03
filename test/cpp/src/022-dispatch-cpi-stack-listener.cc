@@ -19,30 +19,46 @@ std::deque<ooo_model_instr> make_buffer(std::size_t n, bool wp = false)
   return buffer;
 }
 
+constexpr champsim::backend_stall none{};
+constexpr champsim::backend_stall rob{true, false, false};
+constexpr champsim::backend_stall lq{false, true, false};
+constexpr champsim::backend_stall sq{false, false, true};
+
 TEST_CASE("A dispatch cycle that dispatches a correct-path instruction is dispatching") {
-  REQUIRE(stack::classify(1, 0, make_buffer(4), false, false) == stack::DISPATCHING);
-  REQUIRE(stack::classify(3, 2, make_buffer(4, true), true, true) == stack::DISPATCHING);
+  REQUIRE(stack::classify(1, 0, make_buffer(4), none, false) == stack::DISPATCHING);
+  REQUIRE(stack::classify(3, 2, make_buffer(4, true), rob, true) == stack::DISPATCHING);
 }
 
 TEST_CASE("A dispatch cycle that dispatches only wrong-path instructions is mis-speculating") {
-  REQUIRE(stack::classify(2, 2, make_buffer(4, true), false, false) == stack::MIS_SPECULATING);
+  REQUIRE(stack::classify(2, 2, make_buffer(4, true), none, false) == stack::MIS_SPECULATING);
 }
 
 TEST_CASE("An idle dispatch cycle with a wrong-path head that fits in the back end is mis-speculating") {
-  REQUIRE(stack::classify(0, 0, make_buffer(2, true), false, false) == stack::MIS_SPECULATING);
+  REQUIRE(stack::classify(0, 0, make_buffer(2, true), none, false) == stack::MIS_SPECULATING);
 }
 
 TEST_CASE("An idle dispatch cycle whose head doesn't fit in the back end is stalled, whichever path the head is on") {
-  REQUIRE(stack::classify(0, 0, make_buffer(2), true, false) == stack::STALLED);
-  REQUIRE(stack::classify(0, 0, make_buffer(2), true, true) == stack::STALLED);
-  REQUIRE(stack::classify(0, 0, make_buffer(2, true), true, false) == stack::STALLED);
+  REQUIRE(stack::classify(0, 0, make_buffer(2), rob, false) == stack::STALLED);
+  REQUIRE(stack::classify(0, 0, make_buffer(2), rob, true) == stack::STALLED);
+  REQUIRE(stack::classify(0, 0, make_buffer(2, true), rob, false) == stack::STALLED);
+  REQUIRE(stack::classify(0, 0, make_buffer(2), lq, false) == stack::STALLED);
+  REQUIRE(stack::classify(0, 0, make_buffer(2), sq, false) == stack::STALLED);
+}
+
+TEST_CASE("A stalled dispatch cycle is charged to the first full structure in the order ROB, LQ, SQ") {
+  REQUIRE(stack::classify_stall(rob) == stack::ROB_FULL);
+  REQUIRE(stack::classify_stall(lq) == stack::LQ_FULL);
+  REQUIRE(stack::classify_stall(sq) == stack::SQ_FULL);
+  REQUIRE(stack::classify_stall({true, true, true}) == stack::ROB_FULL);
+  REQUIRE(stack::classify_stall({true, false, true}) == stack::ROB_FULL);
+  REQUIRE(stack::classify_stall({false, true, true}) == stack::LQ_FULL);
 }
 
 TEST_CASE("An idle dispatch cycle with nothing ready is mis-speculating while recovering from a mispredict, and drained otherwise") {
-  REQUIRE(stack::classify(0, 0, make_buffer(0), false, true) == stack::MIS_SPECULATING);
-  REQUIRE(stack::classify(0, 0, make_buffer(2), false, true) == stack::MIS_SPECULATING);
-  REQUIRE(stack::classify(0, 0, make_buffer(0), false, false) == stack::DRAINED);
-  REQUIRE(stack::classify(0, 0, make_buffer(2), false, false) == stack::DRAINED);
+  REQUIRE(stack::classify(0, 0, make_buffer(0), none, true) == stack::MIS_SPECULATING);
+  REQUIRE(stack::classify(0, 0, make_buffer(2), none, true) == stack::MIS_SPECULATING);
+  REQUIRE(stack::classify(0, 0, make_buffer(0), none, false) == stack::DRAINED);
+  REQUIRE(stack::classify(0, 0, make_buffer(2), none, false) == stack::DRAINED);
 }
 
 TEST_CASE("The dispatch CPI stack counts cycles and correct-path instructions and prints them at the end of a non-warmup phase") {
@@ -53,26 +69,42 @@ TEST_CASE("The dispatch CPI stack counts cycles and correct-path instructions an
   const auto empty = make_buffer(0);
 
   uut.begin_phase(true);
-  uut.dispatch_cycle(0, 0, 2, 0, empty, false, false);
+  uut.dispatch_cycle(0, 0, 2, 0, empty, none, false);
+  uut.dispatch_cycle(0, 0, 0, 0, make_buffer(1), rob, false);
   uut.end_phase(true);
   REQUIRE(out.str().empty());
 
   uut.begin_phase(false);
-  uut.dispatch_cycle(0, 1, 4, 1, empty, false, false);          // dispatching, 3 correct-path instrs.
-  uut.dispatch_cycle(0, 2, 2, 2, empty, false, false);          // mis-speculating
-  uut.dispatch_cycle(0, 3, 0, 0, make_buffer(1), true, false);  // stalled
-  uut.dispatch_cycle(0, 4, 0, 0, empty, false, false);          // drained
+  uut.dispatch_cycle(0, 1, 4, 1, empty, none, false);                     // dispatching, 3 correct-path instrs.
+  uut.dispatch_cycle(0, 2, 2, 2, empty, none, false);                     // mis-speculating
+  uut.dispatch_cycle(0, 3, 0, 0, make_buffer(1), rob, false);             // stalled, ROB full
+  uut.dispatch_cycle(0, 4, 0, 0, make_buffer(1), {true, true, false}, false); // stalled, ROB full
+  uut.dispatch_cycle(0, 5, 0, 0, make_buffer(1), sq, false);              // stalled, SQ full
+  uut.dispatch_cycle(0, 6, 0, 0, make_buffer(1), lq, false);              // stalled, LQ full
+  uut.dispatch_cycle(0, 7, 1, 0, empty, rob, false);                      // dispatching (the stall isn't counted)
+  uut.dispatch_cycle(0, 8, 0, 0, empty, none, false);                     // drained
   uut.end_phase(false);
 
-  REQUIRE(uut.per_cpu.at(0).cycles == std::array<uint64_t, stack::NUM_CATEGORIES>{1, 1, 1, 1});
-  REQUIRE(uut.per_cpu.at(0).instrs == 3);
+  REQUIRE(uut.per_cpu.at(0).cycles == std::array<uint64_t, stack::NUM_CATEGORIES>{2, 1, 4, 1});
+  REQUIRE(uut.stall_cycles.at(0) == std::array<uint64_t, stack::NUM_STALL_REASONS>{2, 1, 1});
+  REQUIRE(uut.per_cpu.at(0).instrs == 4);
 
-  const std::string expected = "CPU 0 dispatch CPI stack: cycles: 4 instructions: 3 CPI: 1.333\n"
-                               "CPU 0 dispatch dispatching: cycles: 1 (25%) CPI: 0.3333\n"
-                               "CPU 0 dispatch mis-speculating: cycles: 1 (25%) CPI: 0.3333\n"
-                               "CPU 0 dispatch stalled: cycles: 1 (25%) CPI: 0.3333\n"
-                               "CPU 0 dispatch drained: cycles: 1 (25%) CPI: 0.3333\n";
+  const std::string expected = "CPU 0 dispatch CPI stack: cycles: 8 instructions: 4 CPI: 2\n"
+                               "CPU 0 dispatch dispatching: cycles: 2 (25%) CPI: 0.5\n"
+                               "CPU 0 dispatch mis-speculating: cycles: 1 (12.5%) CPI: 0.25\n"
+                               "CPU 0 dispatch stalled: cycles: 4 (50%) CPI: 1\n"
+                               "CPU 0 dispatch stalled ROB full: cycles: 2 (25%) CPI: 0.5\n"
+                               "CPU 0 dispatch stalled LQ full: cycles: 1 (12.5%) CPI: 0.25\n"
+                               "CPU 0 dispatch stalled SQ full: cycles: 1 (12.5%) CPI: 0.25\n"
+                               "CPU 0 dispatch drained: cycles: 1 (12.5%) CPI: 0.25\n";
   REQUIRE(out.str() == expected);
+
+  // Counts, including the breakdown, reset at the start of the next phase
+  out.str("");
+  uut.begin_phase(false);
+  uut.dispatch_cycle(0, 9, 0, 0, make_buffer(1), sq, false);
+  uut.end_phase(false);
+  REQUIRE(uut.stall_cycles.at(0) == std::array<uint64_t, stack::NUM_STALL_REASONS>{0, 0, 1});
 }
 
 struct empty_env : champsim::modules::environment_module {
