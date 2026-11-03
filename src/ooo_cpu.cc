@@ -179,7 +179,8 @@ void O3_CPU::direct_fdip()
     //fmt::print("Cycle: {}, IP: {}, on WP: {}\n", current_time.time_since_epoch() / clock_period, arch_instr->ip, on_WP);
 
     // fast warmup eliminates register dependencies between instructions branch predictor, cache contents, and prefetchers are still warmed up
-    if (is_warmup()) {
+    // ignore_register_dependencies does the same for the whole run
+    if (is_warmup() || ignore_register_dependencies) {
       arch_instr->source_registers.clear();
       arch_instr->destination_registers.clear();
     }
@@ -411,7 +412,8 @@ std::size_t O3_CPU::instructions_requested()
 bool O3_CPU::do_init_instruction(ooo_model_instr& arch_instr)
 {
   // fast warmup eliminates register dependencies between instructions branch predictor, cache contents, and prefetchers are still warmed up
-  if (is_warmup()) {
+  // ignore_register_dependencies does the same for the whole run
+  if (is_warmup() || ignore_register_dependencies) {
     arch_instr.source_registers.clear();
     arch_instr.destination_registers.clear();
   }

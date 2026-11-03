@@ -417,6 +417,7 @@
       "fdip_taken_branch_width": {"bandwidth": 1},
       "perfect_branch_prediction": false,
       "always_dib_hit": false,
+      "ignore_register_dependencies": false,
       "dib_set": 32,
       "dib_way": 8,
       "dib_window": 16,
