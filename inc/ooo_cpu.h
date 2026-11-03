@@ -197,7 +197,14 @@ public:
   void do_predict_branch(ooo_model_instr& instr);
   void do_flush(ooo_model_instr& mispredicted_branch);
   void squash_pending_flush();
-  void count_stage(const std::string& stage, const ooo_model_instr& instr);
+  // Pipeline stages counted by count_stage. They are counted in an array indexed by stage rather than the string-keyed stats map, which costs a
+  // map lookup per event; with_stage_counts() copies them into stats_type::stage_counts (keyed by name) whenever the stats are read
+  enum class pipeline_stage : std::size_t { FETCH, DIB_HIT, DECODE, DISPATCH, SCHEDULE, EXECUTE, COMPLETE, RETIRE, NUM_STAGES };
+  static constexpr std::array<const char*, static_cast<std::size_t>(pipeline_stage::NUM_STAGES)> stage_names{
+      "fetch", "dib_hit", "decode", "dispatch", "schedule", "execute", "complete", "retire"};
+  std::array<std::pair<uint64_t, uint64_t>, static_cast<std::size_t>(pipeline_stage::NUM_STAGES)> phase_stage_counts{}; // {correct path, wrong path}
+  void count_stage(pipeline_stage stage, const ooo_model_instr& instr);
+  [[nodiscard]] stats_type with_stage_counts(stats_type stats) const;
   void squash_younger_than(uint64_t instr_id);
   void do_check_dib(ooo_model_instr& instr);
   bool do_fetch_instruction(std::deque<ooo_model_instr>::iterator begin, std::deque<ooo_model_instr>::iterator end);
@@ -217,7 +224,7 @@ public:
   [[nodiscard]] uint64_t sim_instr() const final { return num_retired - begin_phase_instr; }
   [[nodiscard]] uint64_t sim_cycle() const final { return (current_time.time_since_epoch() / clock_period) - sim_stats.begin_cycles; }
   uint8_t get_cpu_num() const final { return static_cast<uint8_t>(cpu); }
-  stats_type get_sim_stats() const final { return sim_stats; }
+  stats_type get_sim_stats() const final { return with_stage_counts(sim_stats); }
   stats_type get_roi_stats() const final { return roi_stats; }
 
   void quiet(bool enable) final { show_heartbeat = !enable; }

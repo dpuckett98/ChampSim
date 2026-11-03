@@ -80,7 +80,8 @@ SCENARIO("Correct-path and wrong-path instructions are counted at each pipeline 
 
       THEN("Every correct-path instruction is counted once at every stage")
       {
-        const auto& counts = uut.sim_stats.stage_counts;
+        const auto stats = uut.get_sim_stats(); // stage counts are folded into the stats when they're read
+        const auto& counts = stats.stage_counts;
         for (auto stage : {"fetch", "decode", "dispatch", "schedule", "execute", "complete", "retire"}) {
           INFO("stage: " << stage);
           REQUIRE(counts.count(stage) == 1);
@@ -91,7 +92,8 @@ SCENARIO("Correct-path and wrong-path instructions are counted at each pipeline 
 
       THEN("Every wrong-path instruction is counted up to completion, but none retire")
       {
-        const auto& counts = uut.sim_stats.stage_counts;
+        const auto stats = uut.get_sim_stats(); // stage counts are folded into the stats when they're read
+        const auto& counts = stats.stage_counts;
         for (auto stage : {"fetch", "decode", "dispatch", "schedule", "execute", "complete"}) {
           INFO("stage: " << stage);
           REQUIRE(counts.count(stage) == 1);

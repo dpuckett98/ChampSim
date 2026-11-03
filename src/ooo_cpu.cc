@@ -77,6 +77,7 @@ void O3_CPU::begin_phase(bool warmup, bool roi)
   stats.begin_instrs = num_retired;
   stats.begin_cycles = begin_phase_time.time_since_epoch() / clock_period;
   sim_stats = stats;
+  phase_stage_counts = {};
 }
 
 void O3_CPU::end_phase()
@@ -88,17 +89,27 @@ void O3_CPU::end_phase()
   finish_phase_instr = num_retired;
   finish_phase_time = current_time;
 
-  roi_stats = sim_stats;
+  roi_stats = with_stage_counts(sim_stats);
 }
 
-void O3_CPU::count_stage(const std::string& stage, const ooo_model_instr& instr)
+void O3_CPU::count_stage(const pipeline_stage stage, const ooo_model_instr& instr)
 {
-  auto& [correct_path, wrong_path] = sim_stats.stage_counts[stage];
+  auto& [correct_path, wrong_path] = phase_stage_counts[static_cast<std::size_t>(stage)];
   if (instr.is_wp) {
     ++wrong_path;
   } else {
     ++correct_path;
   }
+}
+
+O3_CPU::stats_type O3_CPU::with_stage_counts(stats_type stats) const
+{
+  // Only stages that have counted something get an entry, as when the map was incremented directly
+  for (std::size_t i = 0; i < std::size(phase_stage_counts); ++i) {
+    if (phase_stage_counts[i].first != 0 || phase_stage_counts[i].second != 0)
+      stats.stage_counts[stage_names[i]] = phase_stage_counts[i];
+  }
+  return stats;
 }
 
 namespace
@@ -192,7 +203,7 @@ void O3_CPU::direct_fdip()
 
     IFETCH_BUFFER.push_back(arch_instr.value());
     IFETCH_BUFFER.back().ready_time = current_time; // TODO: add a branch prediction latency???
-    count_stage("fetch", IFETCH_BUFFER.back());
+    count_stage(pipeline_stage::FETCH, IFETCH_BUFFER.back());
 
     // consume BW
     instrs_bw.consume();
@@ -237,7 +248,7 @@ void O3_CPU::initialize_instruction()
     input_queue.pop_front();
 
     IFETCH_BUFFER.back().ready_time = current_time;
-    count_stage("fetch", IFETCH_BUFFER.back());
+    count_stage(pipeline_stage::FETCH, IFETCH_BUFFER.back());
   }
 }
 
@@ -446,7 +457,7 @@ void O3_CPU::do_check_dib(ooo_model_instr& instr)
     // It can be acted on immediately
     instr.ready_time = current_time;
 
-    count_stage("dib_hit", instr);
+    count_stage(pipeline_stage::DIB_HIT, instr);
   }
 
   instr.dib_checked = true;
@@ -609,7 +620,7 @@ long O3_CPU::decode_instruction()
     // Add to dispatch
     db_entry.ready_time = this->current_time + (this->is_warmup() ? champsim::chrono::clock::duration{} : this->DISPATCH_LATENCY);
 
-    this->count_stage("decode", db_entry);
+    this->count_stage(pipeline_stage::DECODE, db_entry);
 
     if constexpr (champsim::debug_print) {
       fmt::print("[DECODE] do_decode instr_id: {} time: {}\n", db_entry.instr_id, this->current_time.time_since_epoch() / this->clock_period);
@@ -702,7 +713,7 @@ long O3_CPU::dispatch_instruction()
     else
       recovering_from_mispredict = false;
     do_memory_scheduling(ROB.back());
-    count_stage("dispatch", ROB.back());
+    count_stage(pipeline_stage::DISPATCH, ROB.back());
 
     available_dispatch_bandwidth.consume();
     ROB.back().ready_time = current_time + (is_warmup() ? champsim::chrono::clock::duration{} : SCHEDULING_LATENCY);
@@ -752,7 +763,7 @@ void O3_CPU::do_scheduling(ooo_model_instr& instr)
   }
 
   instr.scheduled = true;
-  count_stage("schedule", instr);
+  count_stage(pipeline_stage::SCHEDULE, instr);
 }
 
 long O3_CPU::execute_instruction()
@@ -786,7 +797,7 @@ void O3_CPU::do_execution(ooo_model_instr& instr)
 
   instr.executed = true;
   instr.ready_time = exec_ready_time;
-  count_stage("execute", instr);
+  count_stage(pipeline_stage::EXECUTE, instr);
 
   // Mark LQ entries as ready to translate
   for (auto& lq_entry : LQ) {
@@ -939,7 +950,7 @@ void O3_CPU::do_complete_execution(ooo_model_instr& instr)
   }
 
   instr.completed = true;
-  count_stage("complete", instr);
+  count_stage(pipeline_stage::COMPLETE, instr);
 
   if (instr.branch_mispredicted) {
     //fetch_resume_time = current_time + BRANCH_MISPREDICT_PENALTY;
@@ -1027,7 +1038,7 @@ long O3_CPU::retire_rob()
     for (auto dreg : rob_it->destination_registers) {
       reg_allocator.retire_dest_register(dreg);
     }
-    count_stage("retire", *rob_it);
+    count_stage(pipeline_stage::RETIRE, *rob_it);
   }
 
   uint64_t cycles = current_time.time_since_epoch() / clock_period;
@@ -1181,12 +1192,12 @@ bool CacheBus::issue_write(request_type data_packet)
 
 std::vector<std::string> O3_CPU::print_stats(bool roi) const
 {
-  return format_plaintext(roi ? roi_stats : sim_stats);
+  return format_plaintext(roi ? roi_stats : with_stage_counts(sim_stats));
 }
 
 void O3_CPU::json_stats(champsim::json_stat_builder& b, bool roi) const
 {
-  format_json(roi ? roi_stats : sim_stats, b);
+  format_json(roi ? roi_stats : with_stage_counts(sim_stats), b);
 }
 
 champsim::modules::core_module::register_module<O3_CPU> default_cpu_module("DEFAULT_CORE");
