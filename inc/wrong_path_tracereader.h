@@ -132,48 +132,41 @@ class wrong_path_tracereader
     decltype(decompressed_buffer.end()) buffer_iter = decompressed_buffer.begin();
     decltype(decompressed_buffer.end()) max_buffer_iter = decompressed_buffer.begin();
 
-    // Re-fills the buffer from the stream and puts its first byte in out. Returns false if the stream has no more bytes
-    [[nodiscard]] constexpr bool refill_and_next(char& out) noexcept
+    // Re-fills the (drained) buffer from the stream. Returns false if the stream has no more bytes
+    [[nodiscard]] constexpr bool refill() noexcept
     {
-      if (stream.eof()) {
-        eof = true;
+      if (stream.eof())
         return false;
-      }
 
       decompressed_buffer.fill(0x00);
       stream.read(std::data(decompressed_buffer), decompressed_buffer.size());
       const auto bytes_read = static_cast<std::size_t>(stream.gcount());
-      if (bytes_read == 0) {
-        eof = true;
+      if (bytes_read == 0)
         return false;
-      }
       buffer_iter = decompressed_buffer.begin();
       max_buffer_iter = decompressed_buffer.begin() + bytes_read;
-
-      out = *buffer_iter;
-      buffer_iter++;
-      total_bytes_read++;
       return true;
     }
 
     // Puts the next byte from the input stream in out. Returns false if there are no more bytes
     [[nodiscard]] constexpr bool next_byte(char& out) noexcept
     {
-      // No need to decompress more. We can return from the buffer
-      if (buffer_iter < max_buffer_iter) [[likely]] {
-        out = *buffer_iter;
-        buffer_iter++;
-        total_bytes_read++;
-        if (buffer_iter >= max_buffer_iter)
-          eof = true;
-        return true;
+      // Decompress more only when the buffer is drained
+      if (buffer_iter >= max_buffer_iter) [[unlikely]] {
+        if (!refill())
+          return false;
       }
-      return refill_and_next(out);
+      out = *buffer_iter;
+      buffer_iter++;
+      total_bytes_read++;
+      return true;
     }
 
   public:
     uint64_t total_bytes_read = 0; // Number of bytes read from the stream so far
-    bool eof = false;              // Set to true if no more bytes can be returned
+
+    // True if no more bytes can be returned. Decompresses ahead (without consuming anything) if the buffer is drained
+    [[nodiscard]] constexpr bool at_end() noexcept { return buffer_iter >= max_buffer_iter && !refill(); }
     constexpr stream_reader(const std::string& stream_name) noexcept : stream(stream_name) {}
 
     [[nodiscard]] constexpr char read()
@@ -400,6 +393,7 @@ class wrong_path_tracereader
   {
   private:
     stream_reader<HeaderCompressedType> compressed_header_stream;
+    bool parsed_to_end = false; // Set once parse() has consumed the whole header stream
 
     constexpr void parse_fixed_size_prolog()
     {
@@ -679,11 +673,12 @@ class wrong_path_tracereader
       parse_warnmup_end_arch_insns();
       parse_templates();
 
-      if (!compressed_header_stream.eof)
+      if (!compressed_header_stream.at_end())
         throw std::runtime_error("[ERROR] Unexpected bytes found at the end of the header");
+      parsed_to_end = true;
     }
 
-    constexpr bool eof() const override { return compressed_header_stream.eof; }
+    constexpr bool eof() const override { return parsed_to_end; }
 
     ~header_parser() override = default;
   };
@@ -1844,7 +1839,7 @@ class wrong_path_tracereader
 
       verify_integrity();
 
-      if (!compressed_body_stream.eof)
+      if (!compressed_body_stream.at_end())
         throw std::runtime_error("[ERROR] Unexpected bytes found at the end of body section");
 
       eof_ = true; // Mark the trace source as finished
