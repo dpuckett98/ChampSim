@@ -1262,7 +1262,7 @@ class wrong_path_tracereader
       }
 
       //fmt::print(stderr, "[INFO] Generated {} wrong path instructions\n", retvec.size());
-      for (const auto& instr : retvec)
+      //for (const auto& instr : retvec)
         //fmt::print(stderr, "[INFO] {:x}: branch = {}, taken = {}, dst regs = {}, src regs = {}, is_wp = {}, is_wp_fault = {}\n", instr.ip.to<uint64_t>(),
                    //instr.is_branch, instr.branch_taken, instr.destination_registers, instr.source_registers, instr.is_wp, instr.is_wp_fault);
 
