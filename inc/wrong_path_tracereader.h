@@ -128,96 +128,43 @@ class wrong_path_tracereader
     decltype(decompressed_buffer.end()) buffer_iter = decompressed_buffer.begin();
     decltype(decompressed_buffer.end()) max_buffer_iter = decompressed_buffer.begin();
 
-    // Returns the next byte from the input stream
-    [[nodiscard]] constexpr std::optional<char> decompress() noexcept
+    // Re-fills the buffer from the stream and puts its first byte in out. Returns false if the stream has no more bytes
+    [[nodiscard]] constexpr bool refill_and_next(char& out) noexcept
     {
-      // No more bytes left
-      if ((buffer_iter >= max_buffer_iter) and stream.eof()) {
+      if (stream.eof()) {
         eof = true;
-        return {};
+        return false;
       }
 
-      // No need to decompress more. We can return from the buffer
-      if (buffer_iter < max_buffer_iter) {
-        char front = *buffer_iter;
-        buffer_iter++;
-        total_bytes_read++;
-        if (buffer_iter >= max_buffer_iter)
-          eof = true;
-
-        return {front};
-      }
-
-      // The buffer is empty. Re-fill the buffer
       decompressed_buffer.fill(0x00);
       stream.read(std::data(decompressed_buffer), decompressed_buffer.size());
       const auto bytes_read = static_cast<std::size_t>(stream.gcount());
       if (bytes_read == 0) {
         eof = true;
-        return {};
+        return false;
       }
       buffer_iter = decompressed_buffer.begin();
       max_buffer_iter = decompressed_buffer.begin() + bytes_read;
 
-      // Return the next byte
-      char front = *buffer_iter;
+      out = *buffer_iter;
       buffer_iter++;
       total_bytes_read++;
-      return {front};
+      return true;
     }
 
-    [[nodiscard]] constexpr uint64_t uleb_decoder(std::vector<char>& chunks) const noexcept
+    // Puts the next byte from the input stream in out. Returns false if there are no more bytes
+    [[nodiscard]] constexpr bool next_byte(char& out) noexcept
     {
-      uint64_t retval = 0;
-      uint64_t chunk_id = 0;
-      for (char& byte : chunks) {
-        byte &= 0x7f; // The MSB is used for encoding and is not part of the payload
-        uint64_t chunk = static_cast<uint64_t>(byte);
-        chunk <<= chunk_id * 7; // Shift the chunk bits into their right place
-        retval |= chunk;        // Add the bits to the decoded value
-        chunk_id++;
+      // No need to decompress more. We can return from the buffer
+      if (buffer_iter < max_buffer_iter) [[likely]] {
+        out = *buffer_iter;
+        buffer_iter++;
+        total_bytes_read++;
+        if (buffer_iter >= max_buffer_iter)
+          eof = true;
+        return true;
       }
-      return retval;
-    }
-
-    [[nodiscard]] constexpr int64_t sleb_decoder(std::vector<char>& chunks) const noexcept
-    {
-      int64_t retval = 0;
-      uint64_t chunk_id = 0;
-      for (char& byte : chunks) {
-        byte &= 0x7f; // The MSB is used for encoding and is not part of the payload
-        int64_t chunk = 0;
-        std::memcpy(&chunk, &byte, sizeof(char)); // Safely type cast. Copy over the bits without sign extension
-        chunk <<= chunk_id * 7;                   // Shift the chunk bits into their right place
-        retval |= chunk;                          // Add the bits to the decoded value
-        chunk_id++;
-      }
-
-      // Perform sign extension
-      const bool sign_bit = ((chunks.back() & 0x7f) >> 6); // The last element of chunks holds the MSB byte
-      uint64_t sign_extension_mask = sign_bit ? 0xffffffff'ffffffff : 0x00000000'00000000;
-      sign_extension_mask >>= chunk_id * 7;
-      sign_extension_mask <<= chunk_id * 7;
-      retval |= sign_extension_mask;
-
-      return retval;
-    }
-
-    // Parses a SLEB_WIDE (up to 512 bits) into its low 64 bits, sign-extended. Field values are only ever added, subtracted, and compared, and the low 64 bits
-    // of those results depend only on the low 64 bits of the operands, so keeping just the low 64 bits is exact for every field ChampSim reads
-    [[nodiscard]] constexpr uint64_t sleb_wide_decoder(const std::vector<char>& chunks) const noexcept
-    {
-      uint64_t value = 0;
-      std::size_t bit_idx = 0;
-      for (const char byte : chunks) {
-        if (bit_idx < 64)
-          value |= static_cast<uint64_t>(static_cast<uint8_t>(byte) & 0x7f) << bit_idx;
-        bit_idx += 7;
-      }
-      if (bit_idx < 64 && (chunks.back() & 0x40))
-        value |= ~uint64_t{0} << bit_idx; // Sign extension
-
-      return value;
+      return refill_and_next(out);
     }
 
   public:
@@ -227,65 +174,88 @@ class wrong_path_tracereader
 
     [[nodiscard]] constexpr char read()
     {
-      const auto byte = decompress();
-      if (!byte)
+      char byte;
+      if (!next_byte(byte))
         throw std::runtime_error("[ERROR] Ran out of compressed stream. Exiting...");
 
-      return byte.value();
+      return byte;
     }
 
     // Reads a ULEB from the stream
     [[nodiscard]] constexpr uint64_t parse_uleb()
     {
-      std::vector<char> chunks;
-      while (const auto byte = decompress()) {
-        chunks.emplace_back(byte.value());
-        if (!(byte.value() & 0x80))
+      uint64_t value = 0;
+      std::size_t num_bytes = 0;
+      char byte;
+      while (next_byte(byte)) {
+        if (num_bytes < 10)
+          value |= static_cast<uint64_t>(static_cast<uint8_t>(byte) & 0x7f) << (7 * num_bytes);
+        num_bytes++;
+        if (!(byte & 0x80))
           break;
       }
 
-      if (chunks.size() > 10)
+      if (num_bytes > 10)
         throw std::runtime_error("[ERROR] ULEB of more than 10 bytes detected");
-      if (chunks.size() == 0)
+      if (num_bytes == 0)
         throw std::runtime_error("[ERROR] Empty ULEB detected");
 
-      return uleb_decoder(chunks);
+      return value;
     }
 
     // Reads a SLEB from the stream
-    [[nodiscard]] constexpr uint64_t parse_sleb()
+    [[nodiscard]] constexpr int64_t parse_sleb()
     {
-      std::vector<char> chunks;
-      while (const auto byte = decompress()) {
-        chunks.emplace_back(byte.value());
-        if (!(byte.value() & 0x80))
+      uint64_t value = 0;
+      std::size_t num_bytes = 0;
+      char byte = 0;
+      while (next_byte(byte)) {
+        if (num_bytes < 10)
+          value |= static_cast<uint64_t>(static_cast<uint8_t>(byte) & 0x7f) << (7 * num_bytes);
+        num_bytes++;
+        if (!(byte & 0x80))
           break;
       }
 
-      if (chunks.size() > 10)
+      if (num_bytes > 10)
         throw std::runtime_error("[ERROR] SLEB of more than 10 bytes detected");
-      if (chunks.size() == 0)
+      if (num_bytes == 0)
         throw std::runtime_error("[ERROR] Empty SLEB detected");
 
-      return sleb_decoder(chunks);
+      // Sign extension, from bit 6 of the last byte
+      if (7 * num_bytes < 64 && (byte & 0x40))
+        value |= ~uint64_t{0} << (7 * num_bytes);
+
+      int64_t retval = 0;
+      std::memcpy(&retval, &value, sizeof(retval));
+      return retval;
     }
 
-    // Reads a SLEB_WIDE from the stream
+    // Reads a SLEB_WIDE (up to 512 bits) from the stream, keeping its low 64 bits, sign-extended. Field values are only ever added, subtracted, and compared,
+    // and the low 64 bits of those results depend only on the low 64 bits of the operands, so keeping just the low 64 bits is exact for every field ChampSim
+    // reads
     [[nodiscard]] constexpr uint64_t parse_sleb_wide()
     {
-      std::vector<char> chunks;
-      while (const auto byte = decompress()) {
-        chunks.emplace_back(byte.value());
-        if (!(byte.value() & 0x80))
+      uint64_t value = 0;
+      std::size_t num_bytes = 0;
+      char byte = 0;
+      while (next_byte(byte)) {
+        if (7 * num_bytes < 64)
+          value |= static_cast<uint64_t>(static_cast<uint8_t>(byte) & 0x7f) << (7 * num_bytes);
+        num_bytes++;
+        if (!(byte & 0x80))
           break;
       }
 
-      if (chunks.size() > 74)
+      if (num_bytes > 74)
         throw std::runtime_error("[ERROR] SLEB_WIDE of more than 74 bytes detected");
-      if (chunks.size() == 0)
+      if (num_bytes == 0)
         throw std::runtime_error("[ERROR] Empty SLEB_WIDE detected");
 
-      return sleb_wide_decoder(chunks);
+      if (7 * num_bytes < 64 && (byte & 0x40))
+        value |= ~uint64_t{0} << (7 * num_bytes); // Sign extension
+
+      return value;
     }
 
     // Reads a string from the stream
@@ -745,7 +715,7 @@ class wrong_path_tracereader
     bool last_cp_branch_taken = false;
     uint64_t last_cp_branch_target = 0xdeadbeef;
 
-    // A trace field's value: the low 64 bits of the (up to 512-bit) value in the trace. See sleb_wide_decoder
+    // A trace field's value: the low 64 bits of the (up to 512-bit) value in the trace. See parse_sleb_wide
     using field_value = uint64_t;
 
     struct field_delta_section {
