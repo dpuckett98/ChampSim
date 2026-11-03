@@ -124,6 +124,118 @@ class wrong_path_tracereader
     return (file_name.substr(std::size(file_name) - 3) == "lz4") and check_file_type<lz4_magic, sizeof(lz4_magic), lz4_magic_position>(file_name);
   };
 
+  // LEB128 decoding, shared by stream_reader and byte_cursor. next_byte(byte) puts the next byte in byte and returns false if there are no more bytes
+  template <typename NextByte>
+  [[nodiscard]] static constexpr uint64_t decode_uleb(NextByte&& next_byte)
+  {
+    uint64_t value = 0;
+    std::size_t num_bytes = 0;
+    char byte = 0;
+    while (next_byte(byte)) {
+      if (num_bytes < 10)
+        value |= static_cast<uint64_t>(static_cast<uint8_t>(byte) & 0x7f) << (7 * num_bytes);
+      num_bytes++;
+      if (!(byte & 0x80))
+        break;
+    }
+
+    if (num_bytes > 10)
+      throw std::runtime_error("[ERROR] ULEB of more than 10 bytes detected");
+    if (num_bytes == 0)
+      throw std::runtime_error("[ERROR] Empty ULEB detected");
+
+    return value;
+  }
+
+  template <typename NextByte>
+  [[nodiscard]] static constexpr int64_t decode_sleb(NextByte&& next_byte)
+  {
+    uint64_t value = 0;
+    std::size_t num_bytes = 0;
+    char byte = 0;
+    while (next_byte(byte)) {
+      if (num_bytes < 10)
+        value |= static_cast<uint64_t>(static_cast<uint8_t>(byte) & 0x7f) << (7 * num_bytes);
+      num_bytes++;
+      if (!(byte & 0x80))
+        break;
+    }
+
+    if (num_bytes > 10)
+      throw std::runtime_error("[ERROR] SLEB of more than 10 bytes detected");
+    if (num_bytes == 0)
+      throw std::runtime_error("[ERROR] Empty SLEB detected");
+
+    // Sign extension, from bit 6 of the last byte
+    if (7 * num_bytes < 64 && (byte & 0x40))
+      value |= ~uint64_t{0} << (7 * num_bytes);
+
+    int64_t retval = 0;
+    std::memcpy(&retval, &value, sizeof(retval));
+    return retval;
+  }
+
+  // Decodes a SLEB_WIDE (up to 512 bits), keeping its low 64 bits, sign-extended. Field values are only ever added, subtracted, and compared, and the low 64
+  // bits of those results depend only on the low 64 bits of the operands, so keeping just the low 64 bits is exact for every field ChampSim reads
+  template <typename NextByte>
+  [[nodiscard]] static constexpr uint64_t decode_sleb_wide(NextByte&& next_byte)
+  {
+    uint64_t value = 0;
+    std::size_t num_bytes = 0;
+    char byte = 0;
+    while (next_byte(byte)) {
+      if (7 * num_bytes < 64)
+        value |= static_cast<uint64_t>(static_cast<uint8_t>(byte) & 0x7f) << (7 * num_bytes);
+      num_bytes++;
+      if (!(byte & 0x80))
+        break;
+    }
+
+    if (num_bytes > 74)
+      throw std::runtime_error("[ERROR] SLEB_WIDE of more than 74 bytes detected");
+    if (num_bytes == 0)
+      throw std::runtime_error("[ERROR] Empty SLEB_WIDE detected");
+
+    if (7 * num_bytes < 64 && (byte & 0x40))
+      value |= ~uint64_t{0} << (7 * num_bytes); // Sign extension
+
+    return value;
+  }
+
+  // Reads values from bytes already in memory (a WP chain section kept for later), with the same parsing interface as stream_reader
+  class byte_cursor
+  {
+    const char* pos;
+    const char* end;
+
+    [[nodiscard]] constexpr bool next_byte(char& out) noexcept
+    {
+      if (pos == end)
+        return false;
+      out = *pos++;
+      total_bytes_read++;
+      return true;
+    }
+
+  public:
+    uint64_t total_bytes_read = 0; // Number of bytes read through this cursor, for the section size checks
+
+    constexpr byte_cursor(const char* begin_, const char* end_) noexcept : pos(begin_), end(end_) {}
+
+    [[nodiscard]] constexpr const char* position() const noexcept { return pos; }
+
+    [[nodiscard]] constexpr char read()
+    {
+      char byte = 0;
+      if (!next_byte(byte))
+        throw std::runtime_error("[ERROR] Ran out of bytes in a stored trace section. Exiting...");
+      return byte;
+    }
+    [[nodiscard]] constexpr uint64_t parse_uleb() { return decode_uleb([this](char& byte) { return next_byte(byte); }); }
+    [[nodiscard]] constexpr int64_t parse_sleb() { return decode_sleb([this](char& byte) { return next_byte(byte); }); }
+    [[nodiscard]] constexpr uint64_t parse_sleb_wide() { return decode_sleb_wide([this](char& byte) { return next_byte(byte); }); }
+  };
+
   // This class is responsible for decompressing the compressed streams and returning the decompressed data
   template <typename CompressedStreamType, std::size_t buffer_size = 4096>
   class stream_reader
@@ -182,78 +294,35 @@ class wrong_path_tracereader
     // Reads a ULEB from the stream
     [[nodiscard]] constexpr uint64_t parse_uleb()
     {
-      uint64_t value = 0;
-      std::size_t num_bytes = 0;
-      char byte;
-      while (next_byte(byte)) {
-        if (num_bytes < 10)
-          value |= static_cast<uint64_t>(static_cast<uint8_t>(byte) & 0x7f) << (7 * num_bytes);
-        num_bytes++;
-        if (!(byte & 0x80))
-          break;
-      }
-
-      if (num_bytes > 10)
-        throw std::runtime_error("[ERROR] ULEB of more than 10 bytes detected");
-      if (num_bytes == 0)
-        throw std::runtime_error("[ERROR] Empty ULEB detected");
-
-      return value;
+      return decode_uleb([this](char& byte) { return next_byte(byte); });
     }
 
     // Reads a SLEB from the stream
     [[nodiscard]] constexpr int64_t parse_sleb()
     {
-      uint64_t value = 0;
-      std::size_t num_bytes = 0;
-      char byte = 0;
-      while (next_byte(byte)) {
-        if (num_bytes < 10)
-          value |= static_cast<uint64_t>(static_cast<uint8_t>(byte) & 0x7f) << (7 * num_bytes);
-        num_bytes++;
-        if (!(byte & 0x80))
-          break;
-      }
-
-      if (num_bytes > 10)
-        throw std::runtime_error("[ERROR] SLEB of more than 10 bytes detected");
-      if (num_bytes == 0)
-        throw std::runtime_error("[ERROR] Empty SLEB detected");
-
-      // Sign extension, from bit 6 of the last byte
-      if (7 * num_bytes < 64 && (byte & 0x40))
-        value |= ~uint64_t{0} << (7 * num_bytes);
-
-      int64_t retval = 0;
-      std::memcpy(&retval, &value, sizeof(retval));
-      return retval;
+      return decode_sleb([this](char& byte) { return next_byte(byte); });
     }
 
-    // Reads a SLEB_WIDE (up to 512 bits) from the stream, keeping its low 64 bits, sign-extended. Field values are only ever added, subtracted, and compared,
-    // and the low 64 bits of those results depend only on the low 64 bits of the operands, so keeping just the low 64 bits is exact for every field ChampSim
-    // reads
+    // Reads a SLEB_WIDE from the stream (see decode_sleb_wide)
     [[nodiscard]] constexpr uint64_t parse_sleb_wide()
     {
-      uint64_t value = 0;
-      std::size_t num_bytes = 0;
-      char byte = 0;
-      while (next_byte(byte)) {
-        if (7 * num_bytes < 64)
-          value |= static_cast<uint64_t>(static_cast<uint8_t>(byte) & 0x7f) << (7 * num_bytes);
-        num_bytes++;
-        if (!(byte & 0x80))
-          break;
+      return decode_sleb_wide([this](char& byte) { return next_byte(byte); });
+    }
+
+    // Copies the next num_bytes bytes into out, resizing it (and keeping its capacity)
+    constexpr void read_into(std::vector<char>& out, const std::size_t num_bytes)
+    {
+      out.resize(num_bytes);
+      std::size_t copied = 0;
+      while (copied < num_bytes) {
+        if (buffer_iter >= max_buffer_iter && !refill())
+          throw std::runtime_error("[ERROR] Ran out of compressed stream. Exiting...");
+        const std::size_t chunk = std::min(num_bytes - copied, static_cast<std::size_t>(max_buffer_iter - buffer_iter));
+        std::memcpy(std::data(out) + copied, &*buffer_iter, chunk);
+        buffer_iter += static_cast<std::ptrdiff_t>(chunk);
+        copied += chunk;
+        total_bytes_read += chunk;
       }
-
-      if (num_bytes > 74)
-        throw std::runtime_error("[ERROR] SLEB_WIDE of more than 74 bytes detected");
-      if (num_bytes == 0)
-        throw std::runtime_error("[ERROR] Empty SLEB_WIDE detected");
-
-      if (7 * num_bytes < 64 && (byte & 0x40))
-        value |= ~uint64_t{0} << (7 * num_bytes); // Sign extension
-
-      return value;
     }
 
     // Reads a string from the stream
@@ -746,10 +815,25 @@ class wrong_path_tracereader
       std::optional<wp_events_section> events;
     };
 
+    // An entry's WP chain section, kept as its raw bytes. Its blocks are decoded and applied straight to the WP overlay, one at a time, when the WP reaches
+    // them or when the chain is finished, without building per-block records. Only IFRAME validation decodes the whole chain (decode_wp_chain)
+    struct stored_wp_chain {
+      uint64_t hdr = 0;
+      uint64_t num_wp = 0;
+      bool has_wp_events = false;
+      std::vector<char> bytes;            // The section's bytes, after its size
+      std::size_t blocks_offset = 0;      // Where the first block starts in bytes (after hdr)
+      std::size_t next_block_offset = 0;  // Where the first block whose deltas haven't been applied starts
+      uint32_t last_template_id = 0;      // Template ID of the last applied block; block template IDs are delta coded
+      wp_events_section events;           // Valid only if has_wp_events
+    };
+
+    // Body entries are parsed into the same object every time (see handle_entry), so their vectors keep their capacity and parsing doesn't allocate
     struct body_entry {
       uint32_t template_id;
       delta_section cp_delta;
-      std::optional<wp_chain_section> wp_chain;
+      bool has_wp_chain = false;
+      stored_wp_chain wp_chain;          // Valid only if has_wp_chain
       std::size_t wp_blocks_applied = 0; // Number of WP chain blocks (from the front) whose deltas have been applied to the WP overlay
       bool wp_deltas_added = false;      // True once every WP chain block's deltas have been applied
     };
@@ -1287,7 +1371,8 @@ class wrong_path_tracereader
       return retvec;
     }
 
-    [[nodiscard]] constexpr std::vector<ooo_model_instr> continue_cp(const body_entry& entry)
+    // Applies the entry's CP deltas and appends its instructions to instr_buffer
+    constexpr void continue_cp(const body_entry& entry)
     {
       const template_ref& ref = get_template(entry.template_id);
       const auto& bb_template = *ref.tmpl;
@@ -1297,18 +1382,14 @@ class wrong_path_tracereader
 
       // Generate instructions
       const std::size_t num_instr = instructions.size();
-      std::vector<ooo_model_instr> retvec;
-      retvec.reserve(num_instr);
       uint64_t pc = bb_template.start_pc;
       uint64_t next_pc = pc; // The PC for the instruction after this instruction
       for (uint64_t ipos = 0; ipos < num_instr; ipos++) {
-        retvec.emplace_back(generate_instruction(pc, instructions[ipos], overlay[ref.base + ipos], next_pc));
+        instr_buffer.emplace_back(generate_instruction(pc, instructions[ipos], overlay[ref.base + ipos], next_pc));
       }
 
       //next_cp_bb_pc = next_pc;
       first_entry = false;
-
-      return retvec;
     }
 
     // Merges two sorted slots into out (sorted), taking primary's value for a fid both hold
@@ -1332,53 +1413,68 @@ class wrong_path_tracereader
     }
     overlay_slot merged_fields; // scratch space for construct_next_wp_block, kept to reuse its allocation
 
-    // Applies the deltas of the chain's next block to the WP overlay and generates that block's instructions. WP instructions are built one block at a time
-    // because the core usually flushes long before the end of the chain; the deltas of the blocks it never reaches are applied by finish_wp_chain
-    [[nodiscard]] std::vector<ooo_model_instr> construct_next_wp_block(body_entry& entry)
+    // Decodes the next block of the entry's stored WP chain and applies its deltas to the WP overlay. Returns the block's template ID
+    uint32_t apply_next_wp_block(body_entry& entry)
     {
-      const wp_chain_section& wp_chain = entry.wp_chain.value();
+      stored_wp_chain& chain = entry.wp_chain;
+      byte_cursor cursor(std::data(chain.bytes) + chain.next_block_offset, std::data(chain.bytes) + std::size(chain.bytes));
+      const int64_t template_id_delta = cursor.parse_sleb();
+      const uint32_t template_id = static_cast<uint32_t>(static_cast<int64_t>(chain.last_template_id) + template_id_delta);
+
+      apply_delta_section(cursor, wp_state.value().overlay, &overlay, template_id);
+
+      chain.last_template_id = template_id;
+      chain.next_block_offset = static_cast<std::size_t>(cursor.position() - std::data(chain.bytes));
+      mark_wp_block_applied(entry);
+      if (entry.wp_deltas_added && chain.next_block_offset != std::size(chain.bytes))
+        throw std::runtime_error("[ERROR] Wrong Path Chain section overflowed its size");
+      return template_id;
+    }
+
+    std::vector<uint64_t> faulting_ipos; // scratch space for construct_next_wp_block, kept to reuse its allocation
+
+    // Applies the deltas of the chain's next block to the WP overlay and appends that block's instructions to instr_buffer. WP instructions are built one
+    // block at a time because the core usually flushes long before the end of the chain; the deltas of the blocks it never reaches are applied by
+    // finish_wp_chain
+    void construct_next_wp_block(body_entry& entry)
+    {
+      const stored_wp_chain& chain = entry.wp_chain;
       const std::size_t block = entry.wp_blocks_applied;
 
       // The instruction positions in this block that the chain's events mark as faulting
       bool has_faulting = false;
-      std::set<uint64_t> faulting_ipos;
-      if (wp_chain.events) {
-        const auto& events = wp_chain.events.value();
+      faulting_ipos.clear();
+      if (chain.has_wp_events) {
+        const auto& events = chain.events;
         for (std::size_t i = 0; i < events.wp_index.size(); i++) {
           if (events.wp_index[i] == block && events.fault_instr_index[i]) {
             has_faulting = true;
-            faulting_ipos.insert(events.fault_instr_index[i].value());
+            faulting_ipos.push_back(events.fault_instr_index[i].value());
           }
         }
       }
 
-      const uint32_t template_id = wp_chain.template_ids[block];
+      const uint32_t template_id = apply_next_wp_block(entry);
       const template_ref& ref = get_template(template_id);
       const auto& instructions = ref.tmpl->instructions;
-      FlatOverlay& wp_overlay = wp_state.value().overlay;
+      const FlatOverlay& wp_overlay = wp_state.value().overlay;
 
-      apply_deltas_to_overlay(wp_chain.wp_deltas[block], wp_overlay, &overlay, template_id);
-      mark_wp_block_applied(entry);
-
-      std::vector<ooo_model_instr> retvec;
-      retvec.reserve(instructions.size());
       uint64_t pc = ref.tmpl->start_pc;
       uint64_t _;
       for (uint64_t ipos = 0; ipos < instructions.size(); ipos++) {
         // Fields the WP never changed aren't in the WP overlay (the trace has no delta for them), so they hold the CP value
         merge_fields(wp_overlay[ref.base + ipos], overlay[ref.base + ipos], merged_fields);
-        retvec.emplace_back(generate_instruction<true>(pc, instructions[ipos], merged_fields, _));
-        retvec.back().set_wp_event_flags(); // Mark as wrong path non-faulting instruction
+        auto& instr = instr_buffer.emplace_back(generate_instruction<true>(pc, instructions[ipos], merged_fields, _));
+        instr.set_wp_event_flags(); // Mark as wrong path non-faulting instruction
         if (has_faulting)
-          retvec.back().set_wp_event_flags(faulting_ipos.find(ipos) != faulting_ipos.end()); // Mark as wrong path faulting instruction
+          instr.set_wp_event_flags(std::find(std::begin(faulting_ipos), std::end(faulting_ipos), ipos) != std::end(faulting_ipos)); // Mark as wrong path faulting instruction
       }
-      return retvec;
     }
 
     constexpr void mark_wp_block_applied(body_entry& entry) noexcept
     {
       entry.wp_blocks_applied++;
-      if (entry.wp_blocks_applied == entry.wp_chain.value().num_wp)
+      if (entry.wp_blocks_applied == entry.wp_chain.num_wp)
         entry.wp_deltas_added = true;
     }
 
@@ -1386,38 +1482,45 @@ class wrong_path_tracereader
     // so every block's deltas have to be applied, whether or not the core fetched it
     constexpr void finish_wp_chain(body_entry& entry)
     {
-      if (entry.wp_deltas_added || !entry.wp_chain.has_value())
+      if (entry.wp_deltas_added || !entry.has_wp_chain)
         return;
-      const wp_chain_section& wp_chain = entry.wp_chain.value();
-      while (entry.wp_blocks_applied < wp_chain.num_wp) {
+      while (entry.wp_blocks_applied < entry.wp_chain.num_wp) {
         if (!wp_state)
           make_wp_state();
-        const std::size_t block = entry.wp_blocks_applied;
-        apply_deltas_to_overlay(wp_chain.wp_deltas[block], wp_state.value().overlay, &overlay, wp_chain.template_ids[block]);
-        mark_wp_block_applied(entry);
+        apply_next_wp_block(entry);
       }
     }
 
-    // Returns the next block of WP instructions for the entry's WP chain, or falls back to trace inferred wrong path once the chain is used up
-    [[nodiscard]] std::optional<std::vector<ooo_model_instr>> next_wp_block(body_entry& entry)
+    // Appends the next block of WP instructions for the entry's WP chain to instr_buffer, or falls back to trace inferred wrong path once the chain is used
+    // up. Returns false if there are no WP instructions to give
+    [[nodiscard]] bool next_wp_block(body_entry& entry)
     {
+      const auto fall_back = [this] {
+        auto trace_inferred = continue_wp();
+        if (!trace_inferred.has_value())
+          return false;
+        instr_buffer.insert(std::end(instr_buffer), std::make_move_iterator(std::begin(*trace_inferred)), std::make_move_iterator(std::end(*trace_inferred)));
+        return true;
+      };
+
       if (entry.wp_deltas_added)
-        return continue_wp();
+        return fall_back();
 
       if (!wp_enabled)
-        return std::nullopt;
+        return false;
 
-      if (not entry.wp_chain)
+      if (!entry.has_wp_chain)
         throw std::runtime_error(fmt::format("[ERROR] WP chain is unavailable. Can't start WP!"));
 
       if (!wp_state)
         make_wp_state();
 
       // Wrong path isn't available. Fall back to trace inferred wrong path
-      if (entry.wp_chain.value().num_wp == 0)
-        return continue_wp();
+      if (entry.wp_chain.num_wp == 0)
+        return fall_back();
 
-      return construct_next_wp_block(entry);
+      construct_next_wp_block(entry);
+      return true;
     }
 
     constexpr void handle_thread_switch()
@@ -1481,47 +1584,83 @@ class wrong_path_tracereader
       [[maybe_unused]] const uint64_t request_id = compressed_body_stream.parse_uleb();
     }
 
-    [[nodiscard]] constexpr field_delta_section read_field_delta_section(uint32_t& ipos)
+    // The section readers below take the source to read from: compressed_body_stream, or a byte_cursor over a stored WP chain
+    template <typename Source>
+    [[nodiscard]] constexpr field_delta_section read_field_delta_section(Source& source, uint32_t& ipos)
     {
       field_delta_section field_delta;
-      const uint64_t ipos_delta = compressed_body_stream.parse_uleb();
+      const uint64_t ipos_delta = source.parse_uleb();
       ipos = static_cast<uint32_t>(static_cast<uint64_t>(ipos) + ipos_delta);
       field_delta.ipos = ipos;
-      field_delta.fid = compressed_body_stream.parse_uleb();
-      field_delta.delta = compressed_body_stream.parse_sleb_wide();
+      field_delta.fid = source.parse_uleb();
+      field_delta.delta = source.parse_sleb_wide();
 
       if (field_delta.fid == fid_extended.get())
-        field_delta.ext_payload = compressed_body_stream.parse_uleb();
+        field_delta.ext_payload = source.parse_uleb();
 
       return field_delta;
     }
 
-    [[nodiscard]] constexpr delta_section read_cp_delta_section()
+    // Reads a delta section into out, reusing its storage
+    template <typename Source>
+    constexpr void read_delta_section_into(Source& source, delta_section& out)
     {
-      const uint64_t section_size = compressed_body_stream.parse_uleb();
-      const uint64_t initial_bytes_read = compressed_body_stream.total_bytes_read;
+      const uint64_t section_size = source.parse_uleb();
+      const uint64_t initial_bytes_read = source.total_bytes_read;
 
-      delta_section cp_delta;
-      const uint64_t n_records = compressed_body_stream.parse_uleb();
+      out.records.clear();
+      out.n_records = source.parse_uleb();
       // Every record takes at least one byte of the section, so the size bounds the reservation even if n_records is corrupt
-      cp_delta.records.reserve(std::min(n_records, section_size));
+      out.records.reserve(std::min(out.n_records, section_size));
       uint32_t ipos = 0;
-      for (uint64_t i = 0; i < n_records; i++)
-        cp_delta.records.emplace_back(read_field_delta_section(ipos));
+      for (uint64_t i = 0; i < out.n_records; i++)
+        out.records.emplace_back(read_field_delta_section(source, ipos));
 
-      if (compressed_body_stream.total_bytes_read - initial_bytes_read != section_size) {
+      if (source.total_bytes_read - initial_bytes_read != section_size) {
         throw std::runtime_error("[ERROR] Correct Path Delta section overflowed its size");
       }
+    }
 
+    [[nodiscard]] constexpr delta_section read_cp_delta_section()
+    {
+      delta_section cp_delta;
+      read_delta_section_into(compressed_body_stream, cp_delta);
       return cp_delta;
     }
 
-    [[nodiscard]] constexpr wp_events_section read_wp_events_section()
+    // Reads a delta section from a stored WP chain and applies each record to overlay_to_use as it's read, without building the records
+    void apply_delta_section(byte_cursor& cursor, FlatOverlay& overlay_to_use, const FlatOverlay* backup_overlay, const uint32_t template_id)
+    {
+      const uint64_t section_size = cursor.parse_uleb();
+      const uint64_t initial_bytes_read = cursor.total_bytes_read;
+
+      const template_ref& ref = get_template(template_id);
+      const std::size_t num_instrs = ref.tmpl->instructions.size();
+      const uint64_t n_records = cursor.parse_uleb();
+      uint32_t ipos = 0;
+      for (uint64_t i = 0; i < n_records; i++) {
+        const field_delta_section delta = read_field_delta_section(cursor, ipos);
+        if (delta.ipos >= num_instrs)
+          throw std::runtime_error(
+              fmt::format("[ERROR] Illegal instruction position {} found for template {} with {} instructions", delta.ipos, template_id, num_instrs));
+
+        const std::size_t slot = ref.base + delta.ipos;
+        add_to_field(overlay_to_use[slot], delta.fid, delta.delta, backup_overlay != nullptr ? &(*backup_overlay)[slot] : nullptr);
+      }
+
+      if (cursor.total_bytes_read - initial_bytes_read != section_size) {
+        throw std::runtime_error("[ERROR] Correct Path Delta section overflowed its size");
+      }
+    }
+
+    // Reads a WP events section into out, reusing its storage
+    constexpr void read_wp_events_section_into(wp_events_section& wp_events)
     {
       const uint64_t section_size = compressed_body_stream.parse_uleb();
       const uint64_t initial_bytes_read = compressed_body_stream.total_bytes_read;
 
-      wp_events_section wp_events;
+      wp_events.wp_index.clear();
+      wp_events.fault_instr_index.clear();
       wp_events.num_events = compressed_body_stream.parse_uleb();
       wp_events.wp_index.reserve(std::min(wp_events.num_events, section_size));
       wp_events.fault_instr_index.reserve(std::min(wp_events.num_events, section_size));
@@ -1542,10 +1681,9 @@ class wrong_path_tracereader
       if (compressed_body_stream.total_bytes_read - initial_bytes_read != section_size) {
         throw std::runtime_error("[ERROR] Wrong Path Events section overflowed its size");
       }
-
-      return wp_events;
     }
 
+    // Reads a WP chain section, decoding every block. Used for IFRAMEs; entries keep their chains as bytes instead (read_stored_wp_chain)
     [[nodiscard]] constexpr wp_chain_section read_wp_chain_section()
     {
       const uint64_t section_size = compressed_body_stream.parse_uleb();
@@ -1566,7 +1704,7 @@ class wrong_path_tracereader
         const int64_t template_id_delta = compressed_body_stream.parse_sleb();
         template_id = static_cast<uint32_t>(static_cast<int64_t>(template_id) + template_id_delta);
         wp_chain.template_ids.emplace_back(template_id);
-        wp_chain.wp_deltas.emplace_back(read_cp_delta_section());
+        read_delta_section_into(compressed_body_stream, wp_chain.wp_deltas.emplace_back());
       }
 
       if (compressed_body_stream.total_bytes_read - initial_bytes_read != section_size) {
@@ -1574,19 +1712,65 @@ class wrong_path_tracereader
       }
 
       if (wp_chain.has_wp_events)
-        wp_chain.events = read_wp_events_section();
+        read_wp_events_section_into(wp_chain.events.emplace());
 
       return wp_chain;
     }
 
-    constexpr void validate_wp(const wp_chain_section& chain)
+    // Reads an entry's WP chain section into chain as raw bytes, decoding only its header (and the events section that follows it)
+    constexpr void read_stored_wp_chain(stored_wp_chain& chain)
     {
-      if (not chain.events)
+      const uint64_t section_size = compressed_body_stream.parse_uleb();
+
+      if (!has_wp_chain_flag_map)
+        throw std::runtime_error("[ERROR] wp_chain_flag encodings not available");
+
+      compressed_body_stream.read_into(chain.bytes, static_cast<std::size_t>(section_size));
+      byte_cursor cursor(std::data(chain.bytes), std::data(chain.bytes) + std::size(chain.bytes));
+      chain.hdr = cursor.parse_uleb();
+      chain.num_wp = chain.hdr >> 1;
+      chain.has_wp_events = (chain.hdr & wp_chain_has_events.get()) != 0;
+      chain.blocks_offset = static_cast<std::size_t>(cursor.position() - std::data(chain.bytes));
+      chain.next_block_offset = chain.blocks_offset;
+      chain.last_template_id = 0;
+
+      // The blocks are checked against the section size as they're applied; a chain without blocks is checked now
+      if (chain.num_wp == 0 && chain.blocks_offset != std::size(chain.bytes))
+        throw std::runtime_error("[ERROR] Wrong Path Chain section overflowed its size");
+
+      if (chain.has_wp_events)
+        read_wp_events_section_into(chain.events);
+    }
+
+    // Decodes every block of a stored WP chain (from the start, whatever has been applied), for IFRAME validation and diagnostics
+    [[nodiscard]] wp_chain_section decode_wp_chain(const stored_wp_chain& chain)
+    {
+      wp_chain_section wp_chain;
+      wp_chain.hdr = chain.hdr;
+      wp_chain.num_wp = chain.num_wp;
+      wp_chain.has_wp_events = chain.has_wp_events;
+      byte_cursor cursor(std::data(chain.bytes) + chain.blocks_offset, std::data(chain.bytes) + std::size(chain.bytes));
+      uint32_t template_id = 0;
+      for (uint64_t i = 0; i < chain.num_wp; i++) {
+        const int64_t template_id_delta = cursor.parse_sleb();
+        template_id = static_cast<uint32_t>(static_cast<int64_t>(template_id) + template_id_delta);
+        wp_chain.template_ids.emplace_back(template_id);
+        read_delta_section_into(cursor, wp_chain.wp_deltas.emplace_back());
+      }
+      if (chain.has_wp_events)
+        wp_chain.events = chain.events;
+      return wp_chain;
+    }
+
+    constexpr void validate_wp(const stored_wp_chain& chain)
+    {
+      if (!chain.has_wp_events)
         return;
-      if (chain.events.value().wp_index.size() == 0)
+      const wp_events_section& events = chain.events;
+      if (events.wp_index.size() == 0)
         return;
 
-      const uint64_t max_index = *std::max_element(chain.events.value().wp_index.cbegin(), chain.events.value().wp_index.cend());
+      const uint64_t max_index = *std::max_element(events.wp_index.cbegin(), events.wp_index.cend());
 
       // Default case: wrong path is valid
       if (max_index < chain.num_wp)
@@ -1594,18 +1778,17 @@ class wrong_path_tracereader
 
       // Special case: wrong path was detected but not captured due to translation failure
       const bool no_wp_bbs = (chain.num_wp == 0);
-      const bool single_event = (chain.events.value().num_events == 1);
-      const bool translation_failure = (chain.events.value().ev_flags == wp_event_translation_unavail.get());
+      const bool single_event = (events.num_events == 1);
+      const bool translation_failure = (events.ev_flags == wp_event_translation_unavail.get());
       if (no_wp_bbs and single_event and translation_failure)
         return;
 
       throw std::runtime_error("[ERROR] Illegal wrong path section detected");
     }
 
-    [[nodiscard]] constexpr body_entry handle_entry()
+    // Parses the next entry into retval, reusing its storage
+    constexpr void handle_entry(body_entry& retval)
     {
-      body_entry retval;
-
       const int64_t template_id_delta = compressed_body_stream.parse_sleb();
       const uint32_t current_template_id = static_cast<uint32_t>(static_cast<int64_t>(previous_template_id) + template_id_delta);
       if (current_template_id >= template_refs.size() || template_refs[current_template_id].tmpl == nullptr)
@@ -1614,13 +1797,14 @@ class wrong_path_tracereader
       seq_num += 1;
 
       retval.template_id = current_template_id;
-      retval.cp_delta = read_cp_delta_section();
-      if (header.prolog.fixed_size.flags & header_flag_wp.get()) {
-        retval.wp_chain = read_wp_chain_section();
-        validate_wp(retval.wp_chain.value());
+      retval.wp_blocks_applied = 0;
+      retval.wp_deltas_added = false;
+      read_delta_section_into(compressed_body_stream, retval.cp_delta);
+      retval.has_wp_chain = (header.prolog.fixed_size.flags & header_flag_wp.get()) != 0;
+      if (retval.has_wp_chain) {
+        read_stored_wp_chain(retval.wp_chain);
+        validate_wp(retval.wp_chain);
       }
-
-      return retval;
     }
 
     // Looks up a field's value in an overlay, returning nullptr if the overlay doesn't hold it
@@ -1711,10 +1895,10 @@ class wrong_path_tracereader
     [[nodiscard]] constexpr OverlayType pending_wp_overlay(OverlayType* previous_occurrence = nullptr)
     {
       OverlayType pending;
-      if (!wp_enabled || !last_body_entry.has_value() || last_body_entry->wp_deltas_added || !last_body_entry->wp_chain.has_value())
+      if (!wp_enabled || !last_body_entry.has_value() || last_body_entry->wp_deltas_added || !last_body_entry->has_wp_chain)
         return pending;
 
-      const wp_chain_section& wp_chain = last_body_entry->wp_chain.value();
+      const wp_chain_section wp_chain = decode_wp_chain(last_body_entry->wp_chain);
       std::set<uint32_t> seen_templates;
       for (std::size_t i = 0; i < wp_chain.num_wp; i++) {
         const uint32_t template_id = wp_chain.template_ids[i];
@@ -1756,7 +1940,7 @@ class wrong_path_tracereader
 
     // Describes where a WP field's value comes from: its value before the current entry's WP chain, and each chain instance's delta to it
     [[nodiscard]] std::string describe_wp_contributions(const uint32_t template_id, const uint64_t ipos, const uint64_t fid,
-                                                         const wp_chain_section& iframe_chain) const
+                                                         const wp_chain_section& iframe_chain)
     {
       const overlay_key key(template_id, ipos);
       const auto value_in = [&](const FlatOverlay& o) -> std::string {
@@ -1766,10 +1950,10 @@ class wrong_path_tracereader
 
       std::string retval = fmt::format("\tContributions to template {} ipos {} FID {}:\n\t\tWP overlay value before chain = {}\n\t\tCP value = {}", template_id,
                                        ipos, fid, wp_state ? value_in(wp_state->overlay) : std::string{"(no WP state)"}, value_in(overlay));
-      if (!last_body_entry.has_value() || !last_body_entry->wp_chain.has_value())
+      if (!last_body_entry.has_value() || !last_body_entry->has_wp_chain)
         return retval + "\n\t\t(no entry WP chain)";
 
-      const wp_chain_section& entry_chain = last_body_entry->wp_chain.value();
+      const wp_chain_section entry_chain = decode_wp_chain(last_body_entry->wp_chain);
       if (entry_chain.template_ids != iframe_chain.template_ids)
         retval += fmt::format("\n\t\tNOTE: entry chain templates {} differ from IFRAME chain templates", entry_chain.template_ids);
       if (last_body_entry->wp_deltas_added)
@@ -2048,21 +2232,19 @@ class wrong_path_tracereader
       // Note: Buffer is refilled *only* (i) at basic block boundaries, or (ii) at the start of a wrong path chain, or (iii) when trace inferred wrong
       // path instructions are needed
       if (instr_buffer.size() == 0) {
-	std::optional<std::vector<ooo_model_instr>> retvec;
 	if (from_cp) {
           // Apply the WP deltas of the previous entry's chain if the core didn't go down it
           if (wp_enabled && last_body_entry.has_value() && !first_entry)
             finish_wp_chain(last_body_entry.value());
-          last_body_entry.emplace(handle_entry());
-          retvec = continue_cp(last_body_entry.value()); //construct_instructions(last_body_entry.value(), from_cp);
+          // The previous entry is done with, so the next one is parsed into the same object to reuse its storage
+          if (!last_body_entry.has_value())
+            last_body_entry.emplace();
+          handle_entry(last_body_entry.value());
+          continue_cp(last_body_entry.value());
           read_till_next_entry();
-	} else {
-          retvec = next_wp_block(last_body_entry.value());
-	}
-	if (!retvec.has_value())
+	} else if (!next_wp_block(last_body_entry.value())) {
           return std::nullopt;
-	instr_buffer.insert(std::end(instr_buffer), std::make_move_iterator(std::begin(*retvec)), std::make_move_iterator(std::end(*retvec)));
-	//fmt::print(stderr, "Finished adding {} new instrs\n", (*retvec).size());
+	}
       }
 
       // Return the next instruction
