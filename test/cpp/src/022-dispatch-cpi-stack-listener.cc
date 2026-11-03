@@ -86,7 +86,7 @@ TEST_CASE("The dispatch CPI stack counts cycles and correct-path instructions an
   uut.end_phase(false);
 
   REQUIRE(uut.per_cpu.at(0).cycles == std::array<uint64_t, stack::NUM_CATEGORIES>{2, 1, 4, 1});
-  REQUIRE(uut.stall_cycles.at(0) == std::array<uint64_t, stack::NUM_STALL_REASONS>{2, 1, 1});
+  REQUIRE(uut.per_cpu.at(0).sub_cycles == std::array<uint64_t, stack::NUM_SUBCATEGORIES>{2, 1, 1});
   REQUIRE(uut.per_cpu.at(0).instrs == 4);
 
   const std::string expected = "CPU 0 dispatch CPI stack: cycles: 8 instructions: 4 CPI: 2\n"
@@ -104,7 +104,7 @@ TEST_CASE("The dispatch CPI stack counts cycles and correct-path instructions an
   uut.begin_phase(false);
   uut.dispatch_cycle(0, 9, 0, 0, make_buffer(1), sq, false);
   uut.end_phase(false);
-  REQUIRE(uut.stall_cycles.at(0) == std::array<uint64_t, stack::NUM_STALL_REASONS>{0, 0, 1});
+  REQUIRE(uut.per_cpu.at(0).sub_cycles == std::array<uint64_t, stack::NUM_SUBCATEGORIES>{0, 0, 1});
 }
 
 struct empty_env : champsim::modules::environment_module {

@@ -4,7 +4,6 @@
 #include <array>
 #include <cstdint>
 #include <deque>
-#include <vector>
 
 #include "backend_stall.h"
 #include "instruction.h"
@@ -32,18 +31,14 @@ namespace champsim
  *
  * Model name: ``DISPATCH_CPI_STACK``. No parameters.
  */
-class dispatch_cpi_stack : public cpi_stack<4>
+class dispatch_cpi_stack : public cpi_stack<4, 3>
 {
 public:
   enum category : std::size_t { DISPATCHING, MIS_SPECULATING, STALLED, DRAINED };
   static constexpr std::array<const char*, NUM_CATEGORIES> category_names{"dispatching", "mis-speculating", "stalled", "drained"};
 
   enum stall_reason : std::size_t { ROB_FULL, LQ_FULL, SQ_FULL };
-  static constexpr std::size_t NUM_STALL_REASONS = 3;
-  static constexpr std::array<const char*, NUM_STALL_REASONS> stall_reason_names{"stalled ROB full", "stalled LQ full", "stalled SQ full"};
-
-  // Per-core stalled cycles by stall reason
-  std::vector<std::array<uint64_t, NUM_STALL_REASONS>> stall_cycles;
+  static constexpr std::array<const char*, NUM_SUBCATEGORIES> stall_reason_names{"stalled ROB full", "stalled LQ full", "stalled SQ full"};
 
   explicit dispatch_cpi_stack(champsim::modules::ModuleBuilder builder);
 
@@ -56,9 +51,6 @@ public:
 
   void dispatch_cycle(uint32_t cpu, uint64_t cycle, std::size_t num_dispatched, std::size_t num_wp_dispatched, const std::deque<ooo_model_instr>& dispatch_buffer,
                       champsim::backend_stall backend_stall, bool recovering_from_mispredict) override;
-
-  void begin_phase(bool is_warmup) override;
-  void end_phase(bool is_warmup) override;
 };
 } // namespace champsim
 

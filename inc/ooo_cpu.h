@@ -42,6 +42,7 @@
 #include "modules.h"
 #include "operable.h"
 #include "register_allocator.h"
+#include "rob_head_state.h"
 #include "msl/lru_table.h"
 #include "util/to_underlying.h"
 
@@ -184,6 +185,7 @@ public:
   [[nodiscard]] champsim::backend_stall dispatch_stall() const; // backend_stall_for the oldest instr. waiting to dispatch (none if there is none)
   [[nodiscard]] bool backend_has_room(const ooo_model_instr& instr) const; // the ROB, LQ, and SQ can all accept instr
   [[nodiscard]] bool backend_full() const;                                // the oldest instr. waiting to dispatch doesn't fit in the ROB, LQ, or SQ
+  [[nodiscard]] champsim::rob_head_state head_state() const;               // where the ROB head is in its lifecycle (NONE if empty or completed)
   long schedule_instruction();
   long execute_instruction();
   long operate_lsq();

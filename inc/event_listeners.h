@@ -38,10 +38,11 @@ inline void end_phase(bool is_warmup)
     listener->end_phase(is_warmup);
 }
 
-inline void retire_cycle(uint32_t cpu, uint64_t cycle, std::size_t num_retired, const std::deque<ooo_model_instr>& rob, bool recovering_from_mispredict)
+inline void retire_cycle(uint32_t cpu, uint64_t cycle, std::size_t num_retired, const std::deque<ooo_model_instr>& rob, bool recovering_from_mispredict,
+                         champsim::rob_head_state head_state)
 {
   for (auto* listener : active())
-    listener->retire_cycle(cpu, cycle, num_retired, rob, recovering_from_mispredict);
+    listener->retire_cycle(cpu, cycle, num_retired, rob, recovering_from_mispredict, head_state);
 }
 
 inline void dispatch_cycle(uint32_t cpu, uint64_t cycle, std::size_t num_dispatched, std::size_t num_wp_dispatched, const std::deque<ooo_model_instr>& dispatch_buffer,

@@ -32,6 +32,7 @@
 #include "access_type.h"
 #include "address.h"
 #include "backend_stall.h"
+#include "rob_head_state.h"
 #include "block.h"
 #include "champsim.h"
 #include "instruction.h"
@@ -1176,9 +1177,11 @@ struct module_base {
     }
 
     // Called every core cycle at the retire stage, with the ROB as it stands at the start of the cycle (the num_retired retiring entries are at its head).
-    // recovering_from_mispredict is true from a misprediction flush until the next correct-path instruction is dispatched into the ROB.
+    // recovering_from_mispredict is true from a misprediction flush until the next correct-path instruction is dispatched into the ROB. head_state says where
+    // the ROB head is in its lifecycle when it hasn't completed (NONE when the ROB is empty or the head has completed).
     virtual void retire_cycle([[maybe_unused]] uint32_t cpu, [[maybe_unused]] uint64_t cycle, [[maybe_unused]] std::size_t num_retired,
-                              [[maybe_unused]] const std::deque<ooo_model_instr>& rob, [[maybe_unused]] bool recovering_from_mispredict)
+                              [[maybe_unused]] const std::deque<ooo_model_instr>& rob, [[maybe_unused]] bool recovering_from_mispredict,
+                              [[maybe_unused]] champsim::rob_head_state head_state)
     {
     }
 

@@ -650,6 +650,43 @@ bool O3_CPU::backend_has_room(const ooo_model_instr& instr) const { return !back
 
 bool O3_CPU::backend_full() const { return dispatch_stall().any(); }
 
+champsim::rob_head_state O3_CPU::head_state() const
+{
+  using state = champsim::rob_head_state;
+  if (std::empty(ROB) || ROB.front().completed)
+    return state::NONE;
+
+  const auto& head = ROB.front();
+  if (!head.scheduled) {
+    if (head.ready_time > current_time)
+      return state::WAITING_TO_SCHEDULE;
+    return state::SCHEDULE_BLOCKED; // the head is first in the scheduler's search, so only a physical register shortage holds it back
+  }
+
+  if (!head.executed) {
+    const bool ready = std::all_of(std::begin(head.source_registers), std::end(head.source_registers),
+                                   [&alloc = std::as_const(reg_allocator)](auto srcreg) { return alloc.isValid(srcreg); });
+    return ready ? state::WAITING_TO_ISSUE : state::WAITING_FOR_OPERANDS;
+  }
+
+  if (head.ready_time > current_time)
+    return state::EXECUTING;
+
+  if (head.completed_mem_ops < head.num_mem_ops()) {
+    const auto is_head = [id = head.instr_id](const auto& lq_entry) { return lq_entry.has_value() && lq_entry->instr_id == id; };
+    if (std::any_of(std::begin(LQ), std::end(LQ), [&](const auto& x) { return is_head(x) && x->producer_id != std::numeric_limits<uint64_t>::max(); }))
+      return state::LOAD_WAITING_ON_STORE;
+    if (std::any_of(std::begin(LQ), std::end(LQ), [&](const auto& x) { return is_head(x) && !x->fetch_issued; }))
+      return state::LOAD_NOT_ISSUED;
+    if (std::any_of(std::begin(LQ), std::end(LQ), is_head))
+      return state::LOAD_IN_FLIGHT;
+    if (std::any_of(std::begin(SQ), std::end(SQ), [id = head.instr_id](const auto& sq_entry) { return sq_entry.instr_id == id && !sq_entry.fetch_issued; }))
+      return state::STORE_PENDING;
+  }
+
+  return state::WAITING_TO_COMPLETE;
+}
+
 long O3_CPU::dispatch_instruction()
 {
   champsim::bandwidth available_dispatch_bandwidth{DISPATCH_WIDTH};
@@ -997,7 +1034,7 @@ long O3_CPU::retire_rob()
   champsim::listeners::retire(cpu, retire_begin, retire_end, cycles);
 
   auto retire_count = std::distance(retire_begin, retire_end);
-  champsim::listeners::retire_cycle(cpu, cycles, static_cast<std::size_t>(retire_count), ROB, recovering_from_mispredict);
+  champsim::listeners::retire_cycle(cpu, cycles, static_cast<std::size_t>(retire_count), ROB, recovering_from_mispredict, head_state());
   num_retired += retire_count;
   ROB.erase(retire_begin, retire_end);
 
