@@ -20,6 +20,7 @@
 #warning "compiling with debug statements"
 // TODO: Remove the debug prints
 
+#include <algorithm>
 #include <array>
 #include <bitset>
 #include <cstddef>
@@ -37,6 +38,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 #include <boost/bimap.hpp>
 #include <fmt/core.h>
 #include <fmt/format.h>
@@ -1996,26 +1998,58 @@ constexpr void wrong_path_tracereader::verify_trace_file_type() const
 
 void wrong_path_tracereader::extract_trace() const
 {
-  const auto open = [] [[nodiscard]] (const char* file_name) constexpr -> TAR* {
-    TAR* handle = nullptr;
-    const int retval = tar_open(&handle, file_name, nullptr, NULL, 0, TAR_GNU);
-    if (retval != 0)
-      throw std::runtime_error(fmt::format("[ERROR] Can't open trace: {}. Exiting...", file_name));
-    return handle;
+  // A minimal tar reader. libtar stores member sizes in an int, so it silently extracts members larger than 2 GiB as empty files, and it can't read
+  // the base-256 size encoding GNU tar uses for members of 8 GiB or more. Trace bodies routinely exceed both limits.
+  constexpr std::size_t block_size = 512;
+  constexpr std::size_t size_offset = 124, size_length = 12, type_offset = 156;
+
+  std::ifstream trace{trace_file, std::ios::binary};
+  if (!trace)
+    throw std::runtime_error(fmt::format("[ERROR] Can't open trace: {}. Exiting...", trace_file));
+
+  const auto parse_size = [&](const std::array<char, block_size>& header) -> uint64_t {
+    const auto* field = reinterpret_cast<const unsigned char*>(header.data() + size_offset);
+    uint64_t size = 0;
+    if (field[0] & 0x80) { // GNU base-256: big-endian binary with the high bit of the first byte set
+      for (std::size_t i = 1; i < size_length; i++)
+        size = (size << 8) | field[i];
+      return size;
+    }
+    for (std::size_t i = 0; i < size_length && field[i] != '\0' && field[i] != ' '; i++) { // octal
+      if (field[i] < '0' || field[i] > '7')
+        throw std::runtime_error(fmt::format("[ERROR] Can't extract trace: {}: malformed tar size field. Exiting...", trace_file));
+      size = (size << 3) | static_cast<uint64_t>(field[i] - '0');
+    }
+    return size;
   };
 
-  const auto close = [](TAR* handle) constexpr -> void {
-    const auto retval = tar_close(handle);
-    if (retval != 0)
-      throw std::runtime_error("[ERROR] Can't close trace. Exiting...");
-  };
+  std::array<char, block_size> header{};
+  std::vector<char> buffer(std::size_t{1} << 22);
+  while (trace.read(header.data(), block_size)) {
+    if (std::all_of(std::begin(header), std::end(header), [](char c) { return c == '\0'; }))
+      break; // end-of-archive marker
 
-  const std::unique_ptr<TAR, decltype(close)> trace{open(trace_file.c_str()), close};
+    const uint64_t size = parse_size(header);
+    const char type = header[type_offset];
+    const std::string name{header.data(), strnlen(header.data(), 100)};
+    const uint64_t padded_size = (size + block_size - 1) / block_size * block_size;
 
-  // Extract the trace files to the extract dir
-  const int retval = tar_extract_all(trace.get(), const_cast<char*>(trace_extract_dir.c_str()));
-  if (retval != 0)
-    throw std::runtime_error(fmt::format("[ERROR] Can't extract trace: {}. Exiting...", trace_file));
+    if (type == '0' || type == '\0') { // regular file; keep only the file name so entries can't escape the extract dir
+      const auto out_path = trace_extract_dir / std::filesystem::path{name}.filename();
+      std::ofstream out{out_path, std::ios::binary | std::ios::trunc};
+      if (!out)
+        throw std::runtime_error(fmt::format("[ERROR] Can't extract trace: {}: can't create {}. Exiting...", trace_file, out_path.string()));
+      for (uint64_t remaining = size; remaining > 0;) {
+        const auto chunk = static_cast<std::streamsize>(std::min<uint64_t>(remaining, std::size(buffer)));
+        if (!trace.read(std::data(buffer), chunk) || !out.write(std::data(buffer), chunk))
+          throw std::runtime_error(fmt::format("[ERROR] Can't extract trace: {}: truncated member {}. Exiting...", trace_file, name));
+        remaining -= static_cast<uint64_t>(chunk);
+      }
+      trace.ignore(static_cast<std::streamsize>(padded_size - size));
+    } else { // directories, links, and GNU extension records are not part of a trace; skip their data
+      trace.ignore(static_cast<std::streamsize>(padded_size));
+    }
+  }
 }
 
 [[nodiscard]] std::filesystem::path wrong_path_tracereader::get_header_path() const
