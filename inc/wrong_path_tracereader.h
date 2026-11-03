@@ -31,12 +31,16 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <map>
+#include <set>
 #include <libtar.h>
 #include <memory>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 #include <boost/bimap.hpp>
 #include <fmt/core.h>
@@ -818,6 +822,198 @@ class wrong_path_tracereader
             fmt::format("[ERROR] Can't verify integrity of trace body. Magic bytes don't match. Expected {:X}, got {:X}", magic_bytes, trace_magic_bytes));
     }
 
+    // Lookup tables for header encodings, built once in initialize() so the per-record and per-instruction paths don't do string-keyed lookups and string
+    // comparisons. Lookups that the original code did on use (and that throw if the encoding is missing) still throw on use, with the same message
+    enum class field_kind : uint8_t {
+      N_LOADS,
+      N_STORES,
+      LOAD_ADDR,
+      STORE_ADDR,
+      LOAD_COUNT_ONLY,  // a load field ChampSim doesn't use, but whose suffix counts towards the observed number of loads
+      STORE_COUNT_ONLY, // likewise for stores
+      DST_REG,
+      INSN_OPCODE,
+      INSN_BRANCH_TYPE,
+      INSN_SIZE,
+      BRANCH_TAKEN,
+      BRANCH_TARGET,
+      IGNORED, // a known field ChampSim doesn't use
+      UNKNOWN  // throws "Unknown FID" when an instruction uses it
+    };
+    struct field_info {
+      field_kind kind = field_kind::UNKNOWN;
+      uint64_t suffix = 0; // the number after the field name's prefix, for the indexed fields
+      std::string name;
+    };
+    std::unordered_map<uint64_t, field_info> field_infos; // field ID -> how generate_instruction treats it
+
+    enum class opcode_status : uint8_t { NO_MAP, UNKNOWN_ID, NOT_BRANCH, BRANCH };
+    std::array<opcode_status, 256> opcode_infos{};
+    enum class branch_type_status : uint8_t { NO_MAP, UNKNOWN_ID, NONE, KNOWN };
+    struct branch_type_info {
+      branch_type_status status = branch_type_status::NO_MAP;
+      branch_type type = NOT_BRANCH;
+    };
+    std::array<branch_type_info, 256> branch_type_infos{};
+
+    enum class body_tag_kind : uint8_t { INVALID, THREAD_SWITCH, ASID_SWITCH, REGFILE, DEVIO_START, DEVIO_STOP, ENTRY, IFRAME, END, OTHER };
+    std::array<body_tag_kind, 256> body_tag_kinds{};
+
+    // An encoding value looked up by name, which throws std::out_of_range on use if the trace header doesn't have it (as the map lookup it replaces did)
+    struct header_constant {
+      std::optional<uint64_t> value;
+      std::string description;
+      [[nodiscard]] uint64_t get() const
+      {
+        if (!value)
+          throw std::out_of_range(fmt::format("[ERROR] Trace header has no {} encoding", description));
+        return *value;
+      }
+    };
+    header_constant fid_extended, wp_event_fault, wp_event_translation_unavail, wp_chain_has_events, header_flag_wp;
+    bool has_wp_chain_flag_map = false;
+
+    [[nodiscard]] header_constant lookup_header_constant(const std::string& map_name, const std::string& name) const
+    {
+      header_constant retval;
+      retval.description = map_name + " " + name;
+      if (const auto map_iter = header.ids.find(map_name); map_iter != header.ids.end())
+        if (const auto iter = map_iter->second.left.find(name); iter != map_iter->second.left.end())
+          retval.value = iter->second;
+      return retval;
+    }
+
+    void build_header_tables()
+    {
+      const auto extract_suffix = [] [[nodiscard]] (const std::string& str, const char* prefix) noexcept -> uint64_t {
+        uint64_t value;
+        const std::string suffix_string = str.substr(std::string_view(prefix).size());
+        std::istringstream iss(std::move(suffix_string));
+        iss >> value;
+        return value;
+      };
+
+      // Field IDs. The prefix tests run in the same order as the chain they replace, since a later test can be shadowed by an earlier one (e.g.
+      // CST_FID_DST_REG_WIDTH starts with CST_FID_DST_REG)
+      if (const auto map_iter = header.ids.find("field_id"); map_iter != header.ids.end()) {
+        for (const auto& [fid_name, fid] : map_iter->second.left) {
+          field_info info;
+          info.name = fid_name;
+          const auto starts_with = [&](const char* prefix) { return fid_name.rfind(prefix, 0) == 0; };
+          const auto indexed = [&](field_kind kind, const char* prefix) {
+            info.kind = kind;
+            info.suffix = extract_suffix(fid_name, prefix);
+          };
+          if (fid_name == "CST_FID_N_LOADS")
+            info.kind = field_kind::N_LOADS;
+          else if (fid_name == "CST_FID_N_STORES")
+            info.kind = field_kind::N_STORES;
+          else if (fid_name == "CST_FID_METAFLAGS")
+            info.kind = field_kind::IGNORED;
+          else if (starts_with("CST_FID_LOAD_ADDR"))
+            indexed(field_kind::LOAD_ADDR, "CST_FID_LOAD_ADDR");
+          else if (starts_with("CST_FID_STORE_ADDR"))
+            indexed(field_kind::STORE_ADDR, "CST_FID_STORE_ADDR");
+          else if (starts_with("CST_FID_LOAD_DATA"))
+            indexed(field_kind::LOAD_COUNT_ONLY, "CST_FID_LOAD_DATA");
+          else if (starts_with("CST_FID_STORE_DATA"))
+            indexed(field_kind::STORE_COUNT_ONLY, "CST_FID_STORE_DATA");
+          else if (starts_with("CST_FID_DST_REG"))
+            indexed(field_kind::DST_REG, "CST_FID_DST_REG");
+          else if (starts_with("CST_FID_LOAD_SIZE"))
+            indexed(field_kind::LOAD_COUNT_ONLY, "CST_FID_LOAD_SIZE");
+          else if (starts_with("CST_FID_STORE_SIZE"))
+            indexed(field_kind::STORE_COUNT_ONLY, "CST_FID_STORE_SIZE");
+          else if (starts_with("CST_FID_DST_REG_WIDTH") || starts_with("CST_FID_SRC_LANE_MASK") || starts_with("CST_FID_DST_LANE_MASK")
+                   || starts_with("CST_FID_LOAD_DATA_LANE_MASK") || starts_with("CST_FID_STORE_DATA_LANE_MASK") || fid_name == "CST_FID_INSN_BYTES_LO"
+                   || fid_name == "CST_FID_INSN_BYTES_HI" || fid_name == "CST_FID_INSN_FLAGS" || fid_name == "CST_FID_INSN_IMMEDIATE"
+                   || fid_name == "CST_FID_EXTENDED")
+            info.kind = field_kind::IGNORED;
+          else if (fid_name == "CST_FID_INSN_OPCODE")
+            info.kind = field_kind::INSN_OPCODE;
+          else if (fid_name == "CST_FID_INSN_BRANCH_TYPE")
+            info.kind = field_kind::INSN_BRANCH_TYPE;
+          else if (fid_name == "CST_FID_INSN_SIZE")
+            info.kind = field_kind::INSN_SIZE;
+          else if (fid_name == "CST_FID_BRANCH_TAKEN")
+            info.kind = field_kind::BRANCH_TAKEN;
+          else if (fid_name == "CST_FID_BRANCH_TARGET")
+            info.kind = field_kind::BRANCH_TARGET;
+          field_infos.emplace(fid, std::move(info));
+        }
+      }
+
+      // Opcodes and branch types, indexed by the 8-bit IDs instructions carry
+      const std::set<std::string> branch_opcodes{"GEN_OP_BRANCH", "GEN_OP_RET", "GEN_OP_SYSCALL"};
+      const auto opcode_map = header.ids.find("opcode");
+      const auto branch_type_map = header.ids.find("branch_type");
+      for (std::size_t id = 0; id < 256; id++) {
+        if (opcode_map == header.ids.end())
+          opcode_infos[id] = opcode_status::NO_MAP;
+        else if (const auto iter = opcode_map->second.right.find(id); iter == opcode_map->second.right.end())
+          opcode_infos[id] = opcode_status::UNKNOWN_ID;
+        else
+          opcode_infos[id] = branch_opcodes.count(iter->second) ? opcode_status::BRANCH : opcode_status::NOT_BRANCH;
+
+        auto& bt = branch_type_infos[id];
+        if (branch_type_map == header.ids.end()) {
+          bt.status = branch_type_status::NO_MAP;
+        } else if (const auto iter = branch_type_map->second.right.find(id); iter == branch_type_map->second.right.end()) {
+          bt.status = branch_type_status::UNKNOWN_ID;
+        } else {
+          const std::string& name = iter->second;
+          bt.status = name == "BRANCH_NONE" ? branch_type_status::NONE : branch_type_status::KNOWN;
+          if (name == "BRANCH_DIRECT_JUMP")
+            bt.type = branch_type::BRANCH_DIRECT_JUMP;
+          else if (name == "BRANCH_INDIRECT_JUMP")
+            bt.type = branch_type::BRANCH_INDIRECT;
+          else if (name == "BRANCH_DIRECT_CALL")
+            bt.type = branch_type::BRANCH_DIRECT_CALL;
+          else if (name == "BRANCH_INDIRECT_CALL")
+            bt.type = branch_type::BRANCH_INDIRECT_CALL;
+          else if (name == "BRANCH_RETURN")
+            bt.type = branch_type::BRANCH_RETURN;
+          else if (name == "BRANCH_SYSCALL_TYPE")
+            bt.type = branch_type::BRANCH_DIRECT_CALL;
+          else if (name == "BRANCH_COND_DIRECT")
+            bt.type = branch_type::BRANCH_CONDITIONAL;
+          else if (name == "BRANCH_REP")
+            bt.type = branch_type::BRANCH_OTHER;
+        }
+      }
+
+      // Body tags
+      for (const auto& [name, tag] : header.ids.at("body_tag").left) {
+        if (tag >= 256)
+          continue; // tags are read as single bytes, so this one can never appear
+        body_tag_kind kind = body_tag_kind::OTHER;
+        if (name == "BODY_TAG_THREAD_SWITCH")
+          kind = body_tag_kind::THREAD_SWITCH;
+        else if (name == "BODY_TAG_ASID_SWITCH")
+          kind = body_tag_kind::ASID_SWITCH;
+        else if (name == "BODY_TAG_REGFILE")
+          kind = body_tag_kind::REGFILE;
+        else if (name == "BODY_TAG_DEVIO_START")
+          kind = body_tag_kind::DEVIO_START;
+        else if (name == "BODY_TAG_DEVIO_STOP")
+          kind = body_tag_kind::DEVIO_STOP;
+        else if (name == "BODY_TAG_ENTRY")
+          kind = body_tag_kind::ENTRY;
+        else if (name == "BODY_TAG_IFRAME")
+          kind = body_tag_kind::IFRAME;
+        else if (name == "BODY_TAG_END")
+          kind = body_tag_kind::END;
+        body_tag_kinds[tag] = kind;
+      }
+
+      fid_extended = lookup_header_constant("field_id", "CST_FID_EXTENDED");
+      wp_event_fault = lookup_header_constant("wp_event_flag", "CST_WP_EVENT_FAULT");
+      wp_event_translation_unavail = lookup_header_constant("wp_event_flag", "CST_WP_EVENT_TRANSLATION_UNAVAIL");
+      wp_chain_has_events = lookup_header_constant("wp_chain_flag", "CST_WP_CHAIN_HAS_EVENTS");
+      header_flag_wp = lookup_header_constant("header_flag", "CST_FLAG_WP");
+      has_wp_chain_flag_map = header.ids.find("wp_chain_flag") != header.ids.end();
+    }
+
     template <bool wrong_path = false>
     [[nodiscard]] constexpr ooo_model_instr generate_instruction(uint64_t& instruction_pc, const header_wrapper::Instruction& instruction_template,
                                                                  const std::map<uint64_t, field_value>& deltas, uint64_t& next_pc)
@@ -826,14 +1022,6 @@ class wrong_path_tracereader
         int64_t retval = 0;
         std::memcpy(&retval, &value, sizeof(retval));
         return retval;
-      };
-
-      const auto extract_suffix = [] [[nodiscard]] (const std::string& str, const char* prefix) constexpr noexcept -> uint64_t {
-        uint64_t value;
-        const std::string suffix_string = str.substr(std::string_view(prefix).size());
-        std::istringstream iss(std::move(suffix_string));
-        iss >> value;
-        return value;
       };
 
       // Compute the PC
@@ -851,28 +1039,30 @@ class wrong_path_tracereader
       bool branch_taken = false;
       uint64_t branch_target = 0xdeadbeef;
       for (const auto& [fid, delta] : deltas) {
-        const std::string& fid_name = header.ids.at("field_id").right.at(fid);
-	//fmt::print(stderr, "{} {} {}\n", fid_name, fid, delta);
-        if (fid_name == "CST_FID_N_LOADS") {
+        const field_info& info = field_infos.at(fid);
+        switch (info.kind) {
+        case field_kind::N_LOADS:
           n_loads = delta;
-        } else if (fid_name == "CST_FID_N_STORES") {
+          break;
+        case field_kind::N_STORES:
           n_stores = delta;
-        } else if (fid_name == "CST_FID_METAFLAGS") {
-          /* Not implemented */
-        } else if (fid_name.rfind("CST_FID_LOAD_ADDR", 0) == 0) {
-	  src_mem.emplace_back(delta);
-          max_observed_load_count = std::max(max_observed_load_count, extract_suffix(fid_name, "CST_FID_LOAD_ADDR"));
-        } else if (fid_name.rfind("CST_FID_STORE_ADDR", 0) == 0) {
+          break;
+        case field_kind::LOAD_ADDR:
+          src_mem.emplace_back(delta);
+          max_observed_load_count = std::max(max_observed_load_count, info.suffix);
+          break;
+        case field_kind::STORE_ADDR:
           dst_mem.emplace_back(delta);
-          max_observed_store_count = std::max(max_observed_store_count, extract_suffix(fid_name, "CST_FID_STORE_ADDR"));
-        } else if (fid_name.rfind("CST_FID_LOAD_DATA", 0) == 0) {
-          /* Not implemented */
-          max_observed_load_count = std::max(max_observed_load_count, extract_suffix(fid_name, "CST_FID_LOAD_DATA"));
-        } else if (fid_name.rfind("CST_FID_STORE_DATA", 0) == 0) {
-          /* Not implemented */
-          max_observed_store_count = std::max(max_observed_store_count, extract_suffix(fid_name, "CST_FID_STORE_DATA"));
-        } else if (fid_name.rfind("CST_FID_DST_REG", 0) == 0) {
-          const uint64_t reg_index = extract_suffix(fid_name, "CST_FID_DST_REG");
+          max_observed_store_count = std::max(max_observed_store_count, info.suffix);
+          break;
+        case field_kind::LOAD_COUNT_ONLY:
+          max_observed_load_count = std::max(max_observed_load_count, info.suffix);
+          break;
+        case field_kind::STORE_COUNT_ONLY:
+          max_observed_store_count = std::max(max_observed_store_count, info.suffix);
+          break;
+        case field_kind::DST_REG: {
+          const uint64_t reg_index = info.suffix;
           if (reg_index >= instruction_template.dst_regs.size())
             throw std::runtime_error(
                 fmt::format("[ERROR] Observed data for register #{} for an instruction with {} registers", reg_index, instruction_template.dst_regs.size()));
@@ -883,44 +1073,27 @@ class wrong_path_tracereader
             wp_state.value().regfile[previous_thread_id][reg_id] = delta;
           } else
             regfile[previous_thread_id][reg_id] = delta;
-        } else if (fid_name.rfind("CST_FID_LOAD_SIZE", 0) == 0) {
-          /* Not implemented */
-          max_observed_load_count = std::max(max_observed_load_count, extract_suffix(fid_name, "CST_FID_LOAD_SIZE"));
-        } else if (fid_name.rfind("CST_FID_STORE_SIZE", 0) == 0) {
-          /* Not implemented */
-          max_observed_store_count = std::max(max_observed_store_count, extract_suffix(fid_name, "CST_FID_STORE_SIZE"));
-        } else if (fid_name.rfind("CST_FID_DST_REG_WIDTH", 0) == 0) {
-          /* Not implemented */
-        } else if (fid_name.rfind("CST_FID_SRC_LANE_MASK", 0) == 0) {
-          /* Not implemented */
-        } else if (fid_name.rfind("CST_FID_DST_LANE_MASK", 0) == 0) {
-          /* Not implemented */
-        } else if (fid_name.rfind("CST_FID_LOAD_DATA_LANE_MASK", 0) == 0) {
-          /* Not implemented */
-        } else if (fid_name.rfind("CST_FID_STORE_DATA_LANE_MASK", 0) == 0) {
-          /* Not implemented */
-        } else if (fid_name == "CST_FID_INSN_BYTES_LO") {
-          /* Not implemented */
-        } else if (fid_name == "CST_FID_INSN_BYTES_HI") {
-          /* Not implemented */
-        } else if (fid_name == "CST_FID_INSN_OPCODE") {
+          break;
+        }
+        case field_kind::INSN_OPCODE:
           opcode_id = static_cast<uint8_t>(delta);
-        } else if (fid_name == "CST_FID_INSN_BRANCH_TYPE") {
+          break;
+        case field_kind::INSN_BRANCH_TYPE:
           branch_type_id = static_cast<uint8_t>(delta);
-        } else if (fid_name == "CST_FID_INSN_FLAGS") {
-          /* Not implemented */
-        } else if (fid_name == "CST_FID_INSN_IMMEDIATE") {
-          /* Not implemented */
-        } else if (fid_name == "CST_FID_INSN_SIZE") {
+          break;
+        case field_kind::INSN_SIZE:
           instr_size = static_cast<uint8_t>(delta);
-        } else if (fid_name == "CST_FID_EXTENDED") {
-          /* Not implemented */
-        } else if (fid_name == "CST_FID_BRANCH_TAKEN") {
+          break;
+        case field_kind::BRANCH_TAKEN:
           branch_taken = (delta == 1);
-        } else if (fid_name == "CST_FID_BRANCH_TARGET") {
+          break;
+        case field_kind::BRANCH_TARGET:
           branch_target = static_cast<uint64_t>(static_cast<int64_t>(instruction_pc) + to_int64_t(delta));
-        } else {
-          throw std::runtime_error(fmt::format("[ERROR] Unknown FID: {} detected", fid_name));
+          break;
+        case field_kind::IGNORED:
+          break;
+        case field_kind::UNKNOWN:
+          throw std::runtime_error(fmt::format("[ERROR] Unknown FID: {} detected", info.name));
         }
       }
       if (max_observed_load_count > n_loads) {
@@ -933,41 +1106,30 @@ class wrong_path_tracereader
       }
 
       // Identify if this instruction is a branch or not
-      if (header.ids.find("opcode") == header.ids.end())
+      switch (opcode_infos[opcode_id]) {
+      case opcode_status::NO_MAP:
         throw std::runtime_error("[ERROR] Opcode encoding map is missing");
-      if (header.ids.at("opcode").right.find(opcode_id) == header.ids.at("opcode").right.end())
+      case opcode_status::UNKNOWN_ID:
         throw std::runtime_error(fmt::format("[ERROR] Found an instruction with unknown opcode ID {}", opcode_id));
-      const std::string& opcode_name = header.ids.at("opcode").right.at(opcode_id);
-
-      const std::set<std::string> branch_opcodes{"GEN_OP_BRANCH", "GEN_OP_RET", "GEN_OP_SYSCALL"};
-      const bool is_branch = (branch_opcodes.find(opcode_name) != branch_opcodes.end());
+      default:
+        break;
+      }
+      const bool is_branch = opcode_infos[opcode_id] == opcode_status::BRANCH;
 
       branch_type br_type{NOT_BRANCH};
       if (is_branch) {
-        if (header.ids.find("branch_type") == header.ids.end())
+        const branch_type_info& bt = branch_type_infos[branch_type_id];
+        switch (bt.status) {
+        case branch_type_status::NO_MAP:
           throw std::runtime_error("[ERROR] Branch Type encoding map is missing");
-        if (header.ids.at("branch_type").right.find(branch_type_id) == header.ids.at("branch_type").right.end())
+        case branch_type_status::UNKNOWN_ID:
           throw std::runtime_error(fmt::format("[ERROR] Found an branch instruction with unknown type ID {}", branch_type_id));
-        const std::string& branch_type_name = header.ids.at("branch_type").right.at(branch_type_id);
-
-        if (branch_type_name == "BRANCH_NONE")
+        case branch_type_status::NONE:
           throw std::runtime_error("[ERROR] Can't infer whether instruction is a branch instruction or not");
-        else if (branch_type_name == "BRANCH_DIRECT_JUMP")
-          br_type = branch_type::BRANCH_DIRECT_JUMP;
-        else if (branch_type_name == "BRANCH_INDIRECT_JUMP")
-          br_type = branch_type::BRANCH_INDIRECT;
-        else if (branch_type_name == "BRANCH_DIRECT_CALL")
-          br_type = branch_type::BRANCH_DIRECT_CALL;
-        else if (branch_type_name == "BRANCH_INDIRECT_CALL")
-          br_type = branch_type::BRANCH_INDIRECT_CALL;
-        else if (branch_type_name == "BRANCH_RETURN")
-          br_type = branch_type::BRANCH_RETURN;
-        else if (branch_type_name == "BRANCH_SYSCALL_TYPE")
-          br_type = branch_type::BRANCH_DIRECT_CALL;
-        else if (branch_type_name == "BRANCH_COND_DIRECT")
-          br_type = branch_type::BRANCH_CONDITIONAL;
-        else if (branch_type_name == "BRANCH_REP")
-          br_type = branch_type::BRANCH_OTHER;
+        case branch_type_status::KNOWN:
+          br_type = bt.type;
+          break;
+        }
       }
 
       next_pc = branch_target;
@@ -1200,7 +1362,7 @@ class wrong_path_tracereader
       field_delta.fid = compressed_body_stream.parse_uleb();
       field_delta.delta = compressed_body_stream.parse_sleb_wide();
 
-      if (field_delta.fid == header.ids.at("field_id").left.at("CST_FID_EXTENDED"))
+      if (field_delta.fid == fid_extended.get())
         field_delta.ext_payload = compressed_body_stream.parse_uleb();
 
       return field_delta;
@@ -1239,7 +1401,7 @@ class wrong_path_tracereader
 
         wp_events.ev_flags = static_cast<uint8_t>(compressed_body_stream.read());
 
-        if (wp_events.ev_flags & header.ids.at("wp_event_flag").left.at("CST_WP_EVENT_FAULT"))
+        if (wp_events.ev_flags & wp_event_fault.get())
           wp_events.fault_instr_index.emplace_back(compressed_body_stream.parse_uleb());
         else
           wp_events.fault_instr_index.emplace_back();
@@ -1257,13 +1419,13 @@ class wrong_path_tracereader
       const uint64_t section_size = compressed_body_stream.parse_uleb();
       const uint64_t initial_bytes_read = compressed_body_stream.total_bytes_read;
 
-      if (header.ids.find("wp_chain_flag") == header.ids.end())
+      if (!has_wp_chain_flag_map)
         throw std::runtime_error("[ERROR] wp_chain_flag encodings not available");
 
       wp_chain_section wp_chain;
       wp_chain.hdr = compressed_body_stream.parse_uleb();
       wp_chain.num_wp = wp_chain.hdr >> 1;
-      wp_chain.has_wp_events = (wp_chain.hdr & header.ids.at("wp_chain_flag").left.at("CST_WP_CHAIN_HAS_EVENTS")) != 0;
+      wp_chain.has_wp_events = (wp_chain.hdr & wp_chain_has_events.get()) != 0;
 
       uint32_t template_id = 0;
       for (uint64_t i = 0; i < wp_chain.num_wp; i++) {
@@ -1299,7 +1461,7 @@ class wrong_path_tracereader
       // Special case: wrong path was detected but not captured due to translation failure
       const bool no_wp_bbs = (chain.num_wp == 0);
       const bool single_event = (chain.events.value().num_events == 1);
-      const bool translation_failure = (chain.events.value().ev_flags == header.ids.at("wp_event_flag").left.at("CST_WP_EVENT_TRANSLATION_UNAVAIL"));
+      const bool translation_failure = (chain.events.value().ev_flags == wp_event_translation_unavail.get());
       if (no_wp_bbs and single_event and translation_failure)
         return;
 
@@ -1319,7 +1481,7 @@ class wrong_path_tracereader
 
       retval.template_id = current_template_id;
       retval.cp_delta = read_cp_delta_section();
-      if (header.prolog.fixed_size.flags & header.ids.at("header_flag").left.at("CST_FLAG_WP")) {
+      if (header.prolog.fixed_size.flags & header_flag_wp.get()) {
         retval.wp_chain = read_wp_chain_section();
         validate_wp(retval.wp_chain.value());
       }
@@ -1504,7 +1666,7 @@ class wrong_path_tracereader
         throw with_context(e, "CP validation");
       }
 
-      if (header.prolog.fixed_size.flags & header.ids.at("header_flag").left.at("CST_FLAG_WP")) {
+      if (header.prolog.fixed_size.flags & header_flag_wp.get()) {
         wp_chain_section wp_chain = read_wp_chain_section();
 
         if (wp_state) // Verify WP only when executing WP
@@ -1567,25 +1729,36 @@ class wrong_path_tracereader
     {
       while (true) {
         const uint8_t tag = compressed_body_stream.read();
-        if (valid_body_tags.find(tag) == valid_body_tags.end())
+        const body_tag_kind kind = body_tag_kinds[tag];
+        if (kind == body_tag_kind::INVALID)
           throw std::runtime_error(fmt::format("[ERROR] Found unexpected tag value of {}. Expected values: {}. Exiting...", tag, valid_body_tags));
 
-        if (header.ids.at("body_tag").right.at(tag) == "BODY_TAG_THREAD_SWITCH") {
+        switch (kind) {
+        case body_tag_kind::THREAD_SWITCH:
           handle_thread_switch();
-        } else if (header.ids.at("body_tag").right.at(tag) == "BODY_TAG_ASID_SWITCH") {
+          break;
+        case body_tag_kind::ASID_SWITCH:
           handle_asid_switch();
-        } else if (header.ids.at("body_tag").right.at(tag) == "BODY_TAG_REGFILE") {
+          break;
+        case body_tag_kind::REGFILE:
           handle_regfile();
-        } else if (header.ids.at("body_tag").right.at(tag) == "BODY_TAG_DEVIO_START") {
+          break;
+        case body_tag_kind::DEVIO_START:
           handle_devio_start();
-        } else if (header.ids.at("body_tag").right.at(tag) == "BODY_TAG_DEVIO_STOP") {
+          break;
+        case body_tag_kind::DEVIO_STOP:
           handle_devio_stop();
-        } else if (header.ids.at("body_tag").right.at(tag) == "BODY_TAG_ENTRY") {
+          break;
+        case body_tag_kind::ENTRY:
           return; // Don't parse the BODY_TAG_ENTRY section yet
-        } else if (header.ids.at("body_tag").right.at(tag) == "BODY_TAG_IFRAME") {
+        case body_tag_kind::IFRAME:
           handle_iframe();
-        } else if (header.ids.at("body_tag").right.at(tag) == "BODY_TAG_END") {
+          break;
+        case body_tag_kind::END:
           return handle_end();
+        case body_tag_kind::INVALID:
+        case body_tag_kind::OTHER:
+          break;
         }
       }
     }
@@ -1617,6 +1790,7 @@ class wrong_path_tracereader
       using namespace wrong_path_trace_constants;
       for (const auto& [_, value] : header.ids.at("body_tag"))
         valid_body_tags.emplace(std::move(value));
+      build_header_tables();
 
       read_till_next_entry(); // Read from the stream until we reach the first BODY_TAG_ENTRY section (but don't read this section yet)
 
