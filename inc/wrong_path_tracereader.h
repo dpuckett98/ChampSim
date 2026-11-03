@@ -59,7 +59,15 @@ class wrong_path_tracereader
 {
   uint8_t cpu;
   std::string trace_file;
-  std::filesystem::path trace_extract_dir;
+
+  // Where a member's data lies in the trace archive. A .cst trace is an uncompressed tar archive of a compressed header and a compressed body; the members
+  // are read in place (see tar_member_stream) rather than extracted, so concurrent simulations don't each need a copy of the trace
+  struct tar_member {
+    std::string name;
+    uint64_t offset = 0; // of the member's data, from the start of the archive
+    uint64_t size = 0;
+  };
+  std::optional<tar_member> header_member, body_member;
   bool wp_enabled = false; // Set this to true to enable WP instruction generation
   uint64_t max_wp_instrs = 0; // Max WP instrs. emitted per wrong-path episode; 0 = no limit
   bool moved = false;
@@ -67,26 +75,54 @@ class wrong_path_tracereader
 
   void cleanup()
   {
-    // Close the extracted files before deleting them. On NFS, unlinking an open file leaves a .nfsXXXX placeholder behind, which makes the directory
-    // non-empty and the removal fail.
     header_stream.reset();
     body_stream.reset();
-
-    // Don't throw: this runs from the destructor, where an exception calls std::terminate
-    std::error_code ec;
-    std::filesystem::remove_all(trace_extract_dir, ec);
-    if (ec)
-      fmt::print(stderr, "[WARNING] Failed to remove extracted trace directory {}: {}\n", trace_extract_dir.string(), ec.message());
   }
 
   void parse_trace();
   constexpr void verify_trace_file_type() const;
-  [[nodiscard]] std::filesystem::path create_extract_dir() const;
-  void extract_trace() const;
-  [[nodiscard]] std::filesystem::path get_header_path() const;
-  [[nodiscard]] std::filesystem::path get_body_path() const;
+  void index_trace();
   void construct_header_stream();
   void construct_body_stream();
+
+public:
+  // Reads one member of a tar archive in place: the archive's bytes from the member's data offset, ending after the member's size, so a decompressor
+  // reading it stops at the end of the member instead of running into the tar padding. Provides the read, gcount, and fail that inf_istream uses
+  class tar_member_stream
+  {
+    std::ifstream file;
+    uint64_t remaining = 0;
+    std::streamsize last_count = 0;
+    bool failed = false;
+
+  public:
+    using char_type = char;
+
+    tar_member_stream(const std::string& archive, const tar_member& member) : file(archive, std::ios::binary), remaining(member.size)
+    {
+      if (!file)
+        throw std::runtime_error(fmt::format("[ERROR] Can't open trace: {}. Exiting...", archive));
+      file.seekg(static_cast<std::streamoff>(member.offset));
+      if (!file)
+        throw std::runtime_error(fmt::format("[ERROR] Can't read trace: {}: can't seek to member {}. Exiting...", archive, member.name));
+    }
+
+    tar_member_stream& read(char* s, const std::streamsize count)
+    {
+      const auto wanted = static_cast<std::streamsize>(std::min<uint64_t>(remaining, static_cast<uint64_t>(count)));
+      file.read(s, wanted);
+      last_count = file.gcount();
+      remaining -= static_cast<uint64_t>(last_count);
+      if (last_count < count)
+        failed = true; // like an istream that reached the end of its data
+      return *this;
+    }
+
+    [[nodiscard]] std::streamsize gcount() const { return last_count; }
+    [[nodiscard]] bool fail() const { return failed; }
+  };
+
+private:
 
   // File type verification utilities
   static constexpr const char tar_magic[5] = {'u', 's', 't', 'a', 'r'};
@@ -102,26 +138,31 @@ class wrong_path_tracereader
   static constexpr const char lz4_magic[4] = {'\x04', '\x22', '\x4d', '\x18'};
   static constexpr const std::size_t lz4_magic_position = 0;
 
+  // Checks for magic bytes at position, counted from base_offset (a member's data offset when checking a member of the archive)
   template <const char* magic, const std::size_t magic_length, const std::size_t position>
-  static constexpr bool check_file_type(const std::string& file_name);
+  static constexpr bool check_file_type(const std::string& file_name, uint64_t base_offset);
 
   static constexpr auto is_tar = [] [[nodiscard]] (const std::string& file_name) -> bool {
-    return check_file_type<tar_magic, sizeof(tar_magic), tar_magic_position>(file_name);
+    return check_file_type<tar_magic, sizeof(tar_magic), tar_magic_position>(file_name, 0);
   };
-  static constexpr auto is_gzip = [] [[nodiscard]] (const std::string& file_name) -> bool {
-    return (file_name.substr(std::size(file_name) - 2) == "gz") and check_file_type<gzip_magic, sizeof(gzip_magic), gzip_magic_position>(file_name);
+  // The compression format checks look at an archive member: its name's extension, and the magic bytes at the start of its data
+  static constexpr auto has_extension = [] [[nodiscard]] (const std::string& name, const std::string& extension) -> bool {
+    return std::size(name) >= std::size(extension) && name.compare(std::size(name) - std::size(extension), std::size(extension), extension) == 0;
   };
-  static constexpr auto is_lzma = [] [[nodiscard]] (const std::string& file_name) -> bool {
-    return (file_name.substr(std::size(file_name) - 2) == "xz") and check_file_type<lzma_magic, sizeof(lzma_magic), lzma_magic_position>(file_name);
+  static constexpr auto is_gzip = [] [[nodiscard]] (const std::string& archive, const tar_member& member) -> bool {
+    return has_extension(member.name, "gz") and check_file_type<gzip_magic, sizeof(gzip_magic), gzip_magic_position>(archive, member.offset);
   };
-  static constexpr auto is_bzip2 = [] [[nodiscard]] (const std::string& file_name) -> bool {
-    return (file_name.substr(std::size(file_name) - 3) == "bz2") and check_file_type<bzip2_magic, sizeof(bzip2_magic), bzip2_magic_position>(file_name);
+  static constexpr auto is_lzma = [] [[nodiscard]] (const std::string& archive, const tar_member& member) -> bool {
+    return has_extension(member.name, "xz") and check_file_type<lzma_magic, sizeof(lzma_magic), lzma_magic_position>(archive, member.offset);
   };
-  static constexpr auto is_zstd = [] [[nodiscard]] (const std::string& file_name) -> bool {
-    return (file_name.substr(std::size(file_name) - 3) == "zst") and check_file_type<zstd_magic, sizeof(zstd_magic), zstd_magic_position>(file_name);
+  static constexpr auto is_bzip2 = [] [[nodiscard]] (const std::string& archive, const tar_member& member) -> bool {
+    return has_extension(member.name, "bz2") and check_file_type<bzip2_magic, sizeof(bzip2_magic), bzip2_magic_position>(archive, member.offset);
   };
-  static constexpr auto is_lz4 = [] [[nodiscard]] (const std::string& file_name) -> bool {
-    return (file_name.substr(std::size(file_name) - 3) == "lz4") and check_file_type<lz4_magic, sizeof(lz4_magic), lz4_magic_position>(file_name);
+  static constexpr auto is_zstd = [] [[nodiscard]] (const std::string& archive, const tar_member& member) -> bool {
+    return has_extension(member.name, "zst") and check_file_type<zstd_magic, sizeof(zstd_magic), zstd_magic_position>(archive, member.offset);
+  };
+  static constexpr auto is_lz4 = [] [[nodiscard]] (const std::string& archive, const tar_member& member) -> bool {
+    return has_extension(member.name, "lz4") and check_file_type<lz4_magic, sizeof(lz4_magic), lz4_magic_position>(archive, member.offset);
   };
 
   // LEB128 decoding, shared by stream_reader and byte_cursor. next_byte(byte) puts the next byte in byte and returns false if there are no more bytes
@@ -280,7 +321,11 @@ class wrong_path_tracereader
 
     // True if no more bytes can be returned. Decompresses ahead (without consuming anything) if the buffer is drained
     [[nodiscard]] constexpr bool at_end() noexcept { return buffer_iter >= max_buffer_iter && !refill(); }
-    constexpr stream_reader(const std::string& stream_name) noexcept : stream(stream_name) {}
+    // source is what CompressedStreamType (an inf_istream) is constructed from: the stream of compressed bytes
+    template <typename Source>
+    explicit stream_reader(Source&& source) : stream(std::forward<Source>(source))
+    {
+    }
 
     [[nodiscard]] constexpr char read()
     {
@@ -734,7 +779,7 @@ class wrong_path_tracereader
     }
 
   public:
-    constexpr header_parser(const std::string& header_file) noexcept : compressed_header_stream(header_file) {}
+    explicit header_parser(tar_member_stream&& header_member) : compressed_header_stream(std::move(header_member)) {}
     constexpr void parse() override
     {
       parse_prolog();
@@ -2125,8 +2170,8 @@ class wrong_path_tracereader
     }
 
   public:
-    constexpr body_parser(const bool wp_enabled_, const uint64_t max_wp_instrs_, const uint8_t cpu_idx, const std::string& body_file, const header_wrapper& header_)
-        : wp_enabled(wp_enabled_), max_wp_instrs(max_wp_instrs_), compressed_body_stream(body_file), header(header_), cpu(cpu_idx)
+    body_parser(const bool wp_enabled_, const uint64_t max_wp_instrs_, const uint8_t cpu_idx, tar_member_stream&& body_member, const header_wrapper& header_)
+        : wp_enabled(wp_enabled_), max_wp_instrs(max_wp_instrs_), compressed_body_stream(std::move(body_member)), header(header_), cpu(cpu_idx)
     {
     }
 
@@ -2325,8 +2370,9 @@ public:
       this->moved = false;
       this->parsed_header = false;
       this->trace_file = std::move(other.trace_file);
-      this->trace_extract_dir = std::move(other.trace_extract_dir);
-      other.moved = true; // Prevent deleting the extracted trace directory
+      this->header_member = std::move(other.header_member);
+      this->body_member = std::move(other.body_member);
+      other.moved = true;
     }
 
     // Move the data from other to this
@@ -2372,8 +2418,7 @@ public:
 void wrong_path_tracereader::parse_trace()
 {
   verify_trace_file_type();
-  trace_extract_dir = create_extract_dir();
-  extract_trace();
+  index_trace();
   construct_header_stream();
   header_stream->parse();
   if (not header_stream->eof())
@@ -2384,14 +2429,14 @@ void wrong_path_tracereader::parse_trace()
 
 // Verifies the magic bytes of file_name. Return true if magic bytes match
 template <const char* magic, const std::size_t magic_length, const std::size_t position>
-[[nodiscard]] constexpr bool wrong_path_tracereader::check_file_type(const std::string& file_name)
+[[nodiscard]] constexpr bool wrong_path_tracereader::check_file_type(const std::string& file_name, const uint64_t base_offset)
 {
   std::ifstream input(file_name, std::ios::binary);
   if (!input.is_open())
     throw std::runtime_error(fmt::format("[ERROR] Can't open {}\n", file_name));
 
   // Read the magic bytes
-  input.seekg(position);
+  input.seekg(static_cast<std::streamoff>(base_offset + position));
   char magic_bytes[magic_length] = "";
   input.read((char*)magic_bytes, magic_length);
 
@@ -2405,33 +2450,18 @@ constexpr void wrong_path_tracereader::verify_trace_file_type() const
     throw std::runtime_error("[ERROR] Unknown trace file format. Was expecting a TAR file\n");
 }
 
-[[nodiscard]] std::filesystem::path wrong_path_tracereader::create_extract_dir() const
+void wrong_path_tracereader::index_trace()
 {
-  const std::filesystem::path base_extract_dir(".temp_extracted_trace");
-  std::filesystem::path extract_dir = base_extract_dir;
-  uint64_t suffix = 0;
-  // create_directory() returns false if the directory already exists, so concurrent simulations each claim a distinct directory
-  // (checking for existence first and creating afterwards races with other simulations started at the same time)
-  while (!std::filesystem::create_directory(extract_dir)) {
-    suffix += 1;
-    extract_dir = base_extract_dir;
-    extract_dir += std::to_string(suffix);
-  }
-  //fmt::print(stderr, "New dir: {}\n", extract_dir.string());
-
-  return extract_dir;
-}
-
-void wrong_path_tracereader::extract_trace() const
-{
-  // A minimal tar reader. libtar stores member sizes in an int, so it silently extracts members larger than 2 GiB as empty files, and it can't read
-  // the base-256 size encoding GNU tar uses for members of 8 GiB or more. Trace bodies routinely exceed both limits.
+  // A minimal tar reader that records where the header and body members' data lie in the archive. It reads the size fields itself because libtar stores
+  // member sizes in an int (wrong for members larger than 2 GiB) and can't read the base-256 size encoding GNU tar uses for members of 8 GiB or more.
+  // Trace bodies routinely exceed both limits
   constexpr std::size_t block_size = 512;
   constexpr std::size_t size_offset = 124, size_length = 12, type_offset = 156;
 
   std::ifstream trace{trace_file, std::ios::binary};
   if (!trace)
     throw std::runtime_error(fmt::format("[ERROR] Can't open trace: {}. Exiting...", trace_file));
+  const uint64_t archive_size = std::filesystem::file_size(trace_file);
 
   const auto parse_size = [&](const std::array<char, block_size>& header) -> uint64_t {
     const auto* field = reinterpret_cast<const unsigned char*>(header.data() + size_offset);
@@ -2443,14 +2473,16 @@ void wrong_path_tracereader::extract_trace() const
     }
     for (std::size_t i = 0; i < size_length && field[i] != '\0' && field[i] != ' '; i++) { // octal
       if (field[i] < '0' || field[i] > '7')
-        throw std::runtime_error(fmt::format("[ERROR] Can't extract trace: {}: malformed tar size field. Exiting...", trace_file));
+        throw std::runtime_error(fmt::format("[ERROR] Can't read trace: {}: malformed tar size field. Exiting...", trace_file));
       size = (size << 3) | static_cast<uint64_t>(field[i] - '0');
     }
     return size;
   };
 
+  header_member.reset();
+  body_member.reset();
   std::array<char, block_size> header{};
-  std::vector<char> buffer(std::size_t{1} << 22);
+  uint64_t header_offset = 0;
   while (trace.read(header.data(), block_size)) {
     if (std::all_of(std::begin(header), std::end(header), [](char c) { return c == '\0'; }))
       break; // end-of-archive marker
@@ -2458,77 +2490,64 @@ void wrong_path_tracereader::extract_trace() const
     const uint64_t size = parse_size(header);
     const char type = header[type_offset];
     const std::string name{header.data(), strnlen(header.data(), 100)};
+    const uint64_t data_offset = header_offset + block_size;
     const uint64_t padded_size = (size + block_size - 1) / block_size * block_size;
 
-    if (type == '0' || type == '\0') { // regular file; keep only the file name so entries can't escape the extract dir
-      const auto out_path = trace_extract_dir / std::filesystem::path{name}.filename();
-      std::ofstream out{out_path, std::ios::binary | std::ios::trunc};
-      if (!out)
-        throw std::runtime_error(fmt::format("[ERROR] Can't extract trace: {}: can't create {}. Exiting...", trace_file, out_path.string()));
-      for (uint64_t remaining = size; remaining > 0;) {
-        const auto chunk = static_cast<std::streamsize>(std::min<uint64_t>(remaining, std::size(buffer)));
-        if (!trace.read(std::data(buffer), chunk) || !out.write(std::data(buffer), chunk))
-          throw std::runtime_error(fmt::format("[ERROR] Can't extract trace: {}: truncated member {}. Exiting...", trace_file, name));
-        remaining -= static_cast<uint64_t>(chunk);
-      }
-      trace.ignore(static_cast<std::streamsize>(padded_size - size));
-    } else { // directories, links, and GNU extension records are not part of a trace; skip their data
-      trace.ignore(static_cast<std::streamsize>(padded_size));
+    if (type == '0' || type == '\0') { // regular file. Directories, links, and GNU extension records are not part of a trace
+      if (data_offset + size > archive_size)
+        throw std::runtime_error(fmt::format("[ERROR] Can't read trace: {}: truncated member {}. Exiting...", trace_file, name));
+      const std::string file_name = std::filesystem::path{name}.filename().string();
+      if (!header_member.has_value() && file_name.find("header.cst") == 0)
+        header_member = tar_member{file_name, data_offset, size};
+      else if (!body_member.has_value() && file_name.find("body.cst") == 0)
+        body_member = tar_member{file_name, data_offset, size};
     }
-  }
-}
 
-[[nodiscard]] std::filesystem::path wrong_path_tracereader::get_header_path() const
-{
-  for (const auto& entry : std::filesystem::directory_iterator(trace_extract_dir)) {
-    if (entry.path().filename().string().find("header.cst") == 0)
-      return entry.path();
+    header_offset = data_offset + padded_size;
+    trace.seekg(static_cast<std::streamoff>(header_offset));
   }
-  throw std::runtime_error("[ERROR] The trace has no header. Exiting...");
-}
 
-[[nodiscard]] std::filesystem::path wrong_path_tracereader::get_body_path() const
-{
-  for (const auto& entry : std::filesystem::directory_iterator(trace_extract_dir)) {
-    if (entry.path().filename().string().find("body.cst") == 0)
-      return entry.path();
-  }
-  throw std::runtime_error("[ERROR] The trace has no body. Exiting...");
+  if (!header_member.has_value())
+    throw std::runtime_error("[ERROR] The trace has no header. Exiting...");
+  if (!body_member.has_value())
+    throw std::runtime_error("[ERROR] The trace has no body. Exiting...");
 }
 
 void wrong_path_tracereader::construct_header_stream()
 {
-  const std::string& header_file_name = get_header_path().string();
-  if (is_gzip(header_file_name)) {
-    header_stream.reset(new header_parser<champsim::inf_istream<champsim::decomp_tags::gzip_tag_t<>>>(header_file_name));
-  } else if (is_lzma(header_file_name)) {
-    header_stream.reset(new header_parser<champsim::inf_istream<champsim::decomp_tags::lzma_tag_t<>>>(header_file_name));
-  } else if (is_bzip2(header_file_name)) {
-    header_stream.reset(new header_parser<champsim::inf_istream<champsim::decomp_tags::bzip2_tag_t>>(header_file_name));
-  } else if (is_zstd(header_file_name)) {
-    header_stream.reset(new header_parser<champsim::inf_istream<champsim::decomp_tags::zst_tag_t>>(header_file_name));
-  } else if (is_lz4(header_file_name)) {
-    header_stream.reset(new header_parser<champsim::inf_istream<champsim::decomp_tags::lz4_tag_t>>(header_file_name));
+  const tar_member& member = header_member.value();
+  tar_member_stream source{trace_file, member};
+  if (is_gzip(trace_file, member)) {
+    header_stream.reset(new header_parser<champsim::inf_istream<champsim::decomp_tags::gzip_tag_t<>, tar_member_stream>>(std::move(source)));
+  } else if (is_lzma(trace_file, member)) {
+    header_stream.reset(new header_parser<champsim::inf_istream<champsim::decomp_tags::lzma_tag_t<>, tar_member_stream>>(std::move(source)));
+  } else if (is_bzip2(trace_file, member)) {
+    header_stream.reset(new header_parser<champsim::inf_istream<champsim::decomp_tags::bzip2_tag_t, tar_member_stream>>(std::move(source)));
+  } else if (is_zstd(trace_file, member)) {
+    header_stream.reset(new header_parser<champsim::inf_istream<champsim::decomp_tags::zst_tag_t, tar_member_stream>>(std::move(source)));
+  } else if (is_lz4(trace_file, member)) {
+    header_stream.reset(new header_parser<champsim::inf_istream<champsim::decomp_tags::lz4_tag_t, tar_member_stream>>(std::move(source)));
   } else { // If all else fails, parse the input as a raw text file
-    header_stream.reset(new header_parser<champsim::inf_istream<champsim::decomp_tags::raw_data_tag_t>>(header_file_name));
+    header_stream.reset(new header_parser<champsim::inf_istream<champsim::decomp_tags::raw_data_tag_t, tar_member_stream>>(std::move(source)));
   }
 }
 
 void wrong_path_tracereader::construct_body_stream()
 {
-  const std::string& body_file_name = get_body_path().string();
-  if (is_gzip(body_file_name)) {
-    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::gzip_tag_t<>>>(wp_enabled, max_wp_instrs, cpu, body_file_name, *header_stream));
-  } else if (is_lzma(body_file_name)) {
-    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::lzma_tag_t<>>>(wp_enabled, max_wp_instrs, cpu, body_file_name, *header_stream));
-  } else if (is_bzip2(body_file_name)) {
-    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::bzip2_tag_t>>(wp_enabled, max_wp_instrs, cpu, body_file_name, *header_stream));
-  } else if (is_zstd(body_file_name)) {
-    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::zst_tag_t>>(wp_enabled, max_wp_instrs, cpu, body_file_name, *header_stream));
-  } else if (is_lz4(body_file_name)) {
-    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::lz4_tag_t>>(wp_enabled, max_wp_instrs, cpu, body_file_name, *header_stream));
+  const tar_member& member = body_member.value();
+  tar_member_stream source{trace_file, member};
+  if (is_gzip(trace_file, member)) {
+    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::gzip_tag_t<>, tar_member_stream>>(wp_enabled, max_wp_instrs, cpu, std::move(source), *header_stream));
+  } else if (is_lzma(trace_file, member)) {
+    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::lzma_tag_t<>, tar_member_stream>>(wp_enabled, max_wp_instrs, cpu, std::move(source), *header_stream));
+  } else if (is_bzip2(trace_file, member)) {
+    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::bzip2_tag_t, tar_member_stream>>(wp_enabled, max_wp_instrs, cpu, std::move(source), *header_stream));
+  } else if (is_zstd(trace_file, member)) {
+    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::zst_tag_t, tar_member_stream>>(wp_enabled, max_wp_instrs, cpu, std::move(source), *header_stream));
+  } else if (is_lz4(trace_file, member)) {
+    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::lz4_tag_t, tar_member_stream>>(wp_enabled, max_wp_instrs, cpu, std::move(source), *header_stream));
   } else { // If all else fails, parse the input as a raw text file
-    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::raw_data_tag_t>>(wp_enabled, max_wp_instrs, cpu, body_file_name, *header_stream));
+    body_stream.reset(new body_parser<champsim::inf_istream<champsim::decomp_tags::raw_data_tag_t, tar_member_stream>>(wp_enabled, max_wp_instrs, cpu, std::move(source), *header_stream));
   }
 }
 
