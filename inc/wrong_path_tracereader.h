@@ -1223,8 +1223,13 @@ class wrong_path_tracereader
             faulting_instructions[wp_chain.events.value().wp_index[i]].insert(wp_chain.events.value().fault_instr_index[i].value());
       }
 
-      // Generate wrong path instructions from wp_chain and set the event flags appropriately
+      // Generate wrong path instructions from wp_chain and set the event flags appropriately. Reserve the whole chain up front: growing the vector one block at a
+      // time with reserve(size() + n) reallocates (and moves every instruction so far) on every block
       std::vector<ooo_model_instr> retvec;
+      std::size_t chain_instrs = 0;
+      for (std::size_t i = 0; i < wp_chain.num_wp; i++)
+        chain_instrs += header.templates.at(wp_chain.template_ids[i]).instructions.size();
+      retvec.reserve(chain_instrs);
       for (std::size_t i = 0; i < wp_chain.num_wp; i++) {
         const uint32_t template_id = wp_chain.template_ids[i];
         const auto& deltas = wp_chain.wp_deltas[i];
@@ -1236,7 +1241,6 @@ class wrong_path_tracereader
         //fmt::print(stderr, "[INFO] Applied deltas for {}\n", template_id);
 
         const std::size_t num_instr = instructions.size();
-        retvec.reserve(retvec.size() + instructions.size());
         uint64_t pc = bb_template.start_pc;
         uint64_t _;
         for (uint64_t ipos = 0; ipos < num_instr; ipos++) {
