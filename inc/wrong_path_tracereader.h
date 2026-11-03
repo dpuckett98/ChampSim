@@ -1488,6 +1488,8 @@ class wrong_path_tracereader
 
       delta_section cp_delta;
       const uint64_t n_records = compressed_body_stream.parse_uleb();
+      // Every record takes at least one byte of the section, so the size bounds the reservation even if n_records is corrupt
+      cp_delta.records.reserve(std::min(n_records, section_size));
       uint32_t ipos = 0;
       for (uint64_t i = 0; i < n_records; i++)
         cp_delta.records.emplace_back(read_field_delta_section(ipos));
@@ -1506,6 +1508,8 @@ class wrong_path_tracereader
 
       wp_events_section wp_events;
       wp_events.num_events = compressed_body_stream.parse_uleb();
+      wp_events.wp_index.reserve(std::min(wp_events.num_events, section_size));
+      wp_events.fault_instr_index.reserve(std::min(wp_events.num_events, section_size));
       int32_t wp_index = -1;
       for (uint64_t i = 0; i < wp_events.num_events; i++) {
         const uint64_t pos_gap = compressed_body_stream.parse_uleb();
@@ -1540,6 +1544,8 @@ class wrong_path_tracereader
       wp_chain.num_wp = wp_chain.hdr >> 1;
       wp_chain.has_wp_events = (wp_chain.hdr & wp_chain_has_events.get()) != 0;
 
+      wp_chain.template_ids.reserve(std::min(wp_chain.num_wp, section_size));
+      wp_chain.wp_deltas.reserve(std::min(wp_chain.num_wp, section_size));
       uint32_t template_id = 0;
       for (uint64_t i = 0; i < wp_chain.num_wp; i++) {
         const int64_t template_id_delta = compressed_body_stream.parse_sleb();
