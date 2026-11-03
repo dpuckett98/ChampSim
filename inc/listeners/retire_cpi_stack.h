@@ -4,11 +4,9 @@
 #include <array>
 #include <cstdint>
 #include <deque>
-#include <iostream>
-#include <string>
-#include <vector>
 
 #include "instruction.h"
+#include "listeners/cpi_stack.h"
 #include "modules.h"
 
 namespace champsim
@@ -25,32 +23,17 @@ namespace champsim
  *
  * Model name: ``RETIRE_CPI_STACK``. No parameters.
  */
-class retire_cpi_stack : public champsim::modules::listener
+class retire_cpi_stack : public cpi_stack<4>
 {
 public:
-  enum category : std::size_t { RETIRING, MIS_SPECULATING, STALLED, DRAINED, NUM_CATEGORIES };
+  enum category : std::size_t { RETIRING, MIS_SPECULATING, STALLED, DRAINED };
   static constexpr std::array<const char*, NUM_CATEGORIES> category_names{"retiring", "mis-speculating", "stalled", "drained"};
-
-  struct counts {
-    std::array<uint64_t, NUM_CATEGORIES> cycles{};
-    uint64_t instrs = 0;
-
-    [[nodiscard]] uint64_t total_cycles() const;
-  };
-
-  std::ostream* std_out = &std::cout;
-  std::vector<counts> per_cpu;
 
   explicit retire_cpi_stack(champsim::modules::ModuleBuilder builder);
 
   // The category a retire-stage cycle belongs to
   [[nodiscard]] static category classify(std::size_t num_retired, const std::deque<ooo_model_instr>& rob, bool recovering_from_mispredict);
 
-  // The printed lines for one core's counts
-  [[nodiscard]] static std::vector<std::string> format(uint32_t cpu, const counts& c);
-
-  void begin_phase(bool is_warmup) override;
-  void end_phase(bool is_warmup) override;
   void retire_cycle(uint32_t cpu, uint64_t cycle, std::size_t num_retired, const std::deque<ooo_model_instr>& rob, bool recovering_from_mispredict) override;
 };
 } // namespace champsim

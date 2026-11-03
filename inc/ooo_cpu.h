@@ -178,6 +178,8 @@ public:
   long promote_to_decode();
   long decode_instruction();
   long dispatch_instruction();
+  [[nodiscard]] bool backend_has_room(const ooo_model_instr& instr) const; // the ROB, LQ, and SQ can all accept instr
+  [[nodiscard]] bool backend_full() const;                                // the oldest instr. waiting to dispatch doesn't fit in the ROB, LQ, or SQ
   long schedule_instruction();
   long execute_instruction();
   long operate_lsq();

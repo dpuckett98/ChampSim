@@ -186,6 +186,11 @@ no-op by default, so an implementation overrides only the events it needs:
   core cycle at the retire stage with the ROB as it stands at the start of the cycle.
   ``recovering_from_mispredict`` is true from a misprediction flush until the next
   correct-path instruction is dispatched into the ROB.
+* ``dispatch_cycle(cpu, cycle, num_dispatched, num_wp_dispatched, dispatch_buffer, backend_full, recovering_from_mispredict)``
+  — called every core cycle after dispatch. ``dispatch_buffer`` holds the instructions still
+  waiting to dispatch; ``backend_full`` is true when its head doesn't fit in the ROB, LQ, or SQ.
+* ``issue_cycle(cpu, cycle, num_issued, num_wp_issued, rob, backend_full, recovering_from_mispredict)``
+  — called every core cycle after instructions are issued to execute, with the ROB afterward.
 
 Register an implementation like any other module::
 
@@ -212,6 +217,21 @@ ChampSim ships these listener models:
   i.e. the front end isn't supplying instructions). The counts are printed per core at the
   end of each non-warmup phase. Enable it with
   ``{"name": "cpi_stack", "module": "listener", "model": "RETIRE_CPI_STACK"}``.
+* ``DISPATCH_CPI_STACK`` — the same breakdown at the dispatch stage: *dispatching* (at least
+  one correct-path instruction dispatched), *mis-speculating* (only wrong-path instructions
+  dispatched, or nothing dispatched while the oldest waiting instruction is on the wrong path or
+  the core recovers from a misprediction), *stalled* (the oldest waiting instruction doesn't fit
+  in the ROB, LQ, or SQ), or *drained* (the front end had nothing ready to dispatch).
+* ``ISSUE_CPI_STACK`` — the same breakdown at the issue stage: *issuing* (at least one
+  correct-path instruction issued), *mis-speculating* (only wrong-path instructions issued or
+  waiting to issue, or nothing waiting while the core recovers from a misprediction), *stalled*
+  (a correct-path instruction is waiting on operands, scheduling, or a physical register, or
+  nothing is waiting and the ROB, LQ, or SQ is full), or *drained* (nothing waiting and the
+  front end isn't supplying instructions).
+
+All three print ``CPU <n> <stage> CPI stack`` and one line per category, and their categories
+always add up to the phase's cycle count. The dispatch and issue stacks count correct-path
+instructions dispatched or issued, which can differ slightly from the number retired.
 
 .. doxygenstruct:: champsim::modules::listener
    :members:

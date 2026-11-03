@@ -1180,6 +1180,23 @@ struct module_base {
                               [[maybe_unused]] const std::deque<ooo_model_instr>& rob, [[maybe_unused]] bool recovering_from_mispredict)
     {
     }
+
+    // Called every core cycle at the dispatch stage, after dispatch. num_dispatched instrs. (num_wp_dispatched of them wrong-path) moved into the ROB, and
+    // dispatch_buffer holds what remains, so when nothing was dispatched its head is the oldest instr. waiting to dispatch. backend_full is true when that head
+    // doesn't fit in the ROB, LQ, or SQ.
+    virtual void dispatch_cycle([[maybe_unused]] uint32_t cpu, [[maybe_unused]] uint64_t cycle, [[maybe_unused]] std::size_t num_dispatched,
+                                [[maybe_unused]] std::size_t num_wp_dispatched, [[maybe_unused]] const std::deque<ooo_model_instr>& dispatch_buffer,
+                                [[maybe_unused]] bool backend_full, [[maybe_unused]] bool recovering_from_mispredict)
+    {
+    }
+
+    // Called every core cycle at the issue (execute) stage, after issue. num_issued instrs. (num_wp_issued of them wrong-path) were sent to execute, and rob is
+    // the ROB afterward. backend_full is true when the oldest instr. waiting to dispatch doesn't fit in the ROB, LQ, or SQ.
+    virtual void issue_cycle([[maybe_unused]] uint32_t cpu, [[maybe_unused]] uint64_t cycle, [[maybe_unused]] std::size_t num_issued,
+                             [[maybe_unused]] std::size_t num_wp_issued, [[maybe_unused]] const std::deque<ooo_model_instr>& rob, [[maybe_unused]] bool backend_full,
+                             [[maybe_unused]] bool recovering_from_mispredict)
+    {
+    }
   };
 
   /**

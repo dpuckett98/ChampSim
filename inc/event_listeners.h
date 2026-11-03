@@ -44,6 +44,20 @@ inline void retire_cycle(uint32_t cpu, uint64_t cycle, std::size_t num_retired, 
     listener->retire_cycle(cpu, cycle, num_retired, rob, recovering_from_mispredict);
 }
 
+inline void dispatch_cycle(uint32_t cpu, uint64_t cycle, std::size_t num_dispatched, std::size_t num_wp_dispatched, const std::deque<ooo_model_instr>& dispatch_buffer,
+                           bool backend_full, bool recovering_from_mispredict)
+{
+  for (auto* listener : active())
+    listener->dispatch_cycle(cpu, cycle, num_dispatched, num_wp_dispatched, dispatch_buffer, backend_full, recovering_from_mispredict);
+}
+
+inline void issue_cycle(uint32_t cpu, uint64_t cycle, std::size_t num_issued, std::size_t num_wp_issued, const std::deque<ooo_model_instr>& rob, bool backend_full,
+                        bool recovering_from_mispredict)
+{
+  for (auto* listener : active())
+    listener->issue_cycle(cpu, cycle, num_issued, num_wp_issued, rob, backend_full, recovering_from_mispredict);
+}
+
 inline void retire(uint32_t cpu, std::deque<ooo_model_instr>::const_iterator begin, std::deque<ooo_model_instr>::const_iterator end, uint64_t cycle)
 {
   for (auto* listener : active())

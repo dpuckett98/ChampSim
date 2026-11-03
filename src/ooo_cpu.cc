@@ -633,19 +633,29 @@ long O3_CPU::decode_instruction()
 
 void O3_CPU::do_dib_update(const ooo_model_instr& instr) { DIB.fill(instr.ip); }
 
+bool O3_CPU::backend_has_room(const ooo_model_instr& instr) const
+{
+  return std::size(ROB) != ROB_SIZE
+         && ((std::size_t)std::count_if(std::begin(LQ), std::end(LQ), [](const auto& lq_entry) { return !lq_entry.has_value(); })
+             >= std::size(instr.source_memory))
+         && ((std::size(instr.destination_memory) + std::size(SQ)) <= SQ_SIZE);
+}
+
+bool O3_CPU::backend_full() const { return !std::empty(DISPATCH_BUFFER) && !backend_has_room(DISPATCH_BUFFER.front()); }
+
 long O3_CPU::dispatch_instruction()
 {
   champsim::bandwidth available_dispatch_bandwidth{DISPATCH_WIDTH};
+  std::size_t num_wp_dispatched = 0;
 
   // dispatch DISPATCH_WIDTH instructions into the ROB
   while (available_dispatch_bandwidth.has_remaining() && !std::empty(DISPATCH_BUFFER) && DISPATCH_BUFFER.front().ready_time <= current_time
-         && std::size(ROB) != ROB_SIZE
-         && ((std::size_t)std::count_if(std::begin(LQ), std::end(LQ), [](const auto& lq_entry) { return !lq_entry.has_value(); })
-             >= std::size(DISPATCH_BUFFER.front().source_memory))
-         && ((std::size(DISPATCH_BUFFER.front().destination_memory) + std::size(SQ)) <= SQ_SIZE)) {
+         && backend_has_room(DISPATCH_BUFFER.front())) {
     ROB.push_back(std::move(DISPATCH_BUFFER.front()));
     DISPATCH_BUFFER.pop_front();
-    if (!ROB.back().is_wp)
+    if (ROB.back().is_wp)
+      ++num_wp_dispatched;
+    else
       recovering_from_mispredict = false;
     do_memory_scheduling(ROB.back());
     count_stage("dispatch", ROB.back());
@@ -653,6 +663,9 @@ long O3_CPU::dispatch_instruction()
     available_dispatch_bandwidth.consume();
     ROB.back().ready_time = current_time + (is_warmup() ? champsim::chrono::clock::duration{} : SCHEDULING_LATENCY);
   }
+
+  champsim::listeners::dispatch_cycle(cpu, current_time.time_since_epoch() / clock_period, static_cast<std::size_t>(available_dispatch_bandwidth.amount_consumed()),
+                                      num_wp_dispatched, DISPATCH_BUFFER, backend_full(), recovering_from_mispredict);
 
   return available_dispatch_bandwidth.amount_consumed();
 }
@@ -701,6 +714,7 @@ void O3_CPU::do_scheduling(ooo_model_instr& instr)
 long O3_CPU::execute_instruction()
 {
   champsim::bandwidth exec_bw{EXEC_WIDTH};
+  std::size_t num_wp_issued = 0;
   for (auto rob_it = std::begin(ROB); rob_it != std::end(ROB) && exec_bw.has_remaining(); ++rob_it) {
     if (rob_it->scheduled && !rob_it->executed && rob_it->ready_time <= current_time) {
       bool ready = std::all_of(std::begin(rob_it->source_registers), std::end(rob_it->source_registers),
@@ -708,9 +722,14 @@ long O3_CPU::execute_instruction()
       if (ready) {
         do_execution(*rob_it);
         exec_bw.consume();
+        if (rob_it->is_wp)
+          ++num_wp_issued;
       }
     }
   }
+
+  champsim::listeners::issue_cycle(cpu, current_time.time_since_epoch() / clock_period, static_cast<std::size_t>(exec_bw.amount_consumed()), num_wp_issued, ROB,
+                                   backend_full(), recovering_from_mispredict);
 
   return exec_bw.amount_consumed();
 }

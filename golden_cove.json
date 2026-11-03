@@ -8,6 +8,8 @@
 
   "children": [
     {"name": "retire_cpi_stack", "module": "listener", "model": "RETIRE_CPI_STACK"},
+    {"name": "dispatch_cpi_stack", "module": "listener", "model": "DISPATCH_CPI_STACK"},
+    {"name": "issue_cpi_stack", "module": "listener", "model": "ISSUE_CPI_STACK"},
     {
       "_comment": "=== Channels (instantiated first, referenced by other modules) ===",
       "name": "cpu0_PTW_cpu0_L1D_channel",
