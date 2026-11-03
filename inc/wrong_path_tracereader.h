@@ -1436,8 +1436,13 @@ class wrong_path_tracereader
         const std::bitset<512>* stored = pending_overlay != nullptr ? lookup(*pending_overlay, key, delta.fid) : nullptr;
         if (stored == nullptr)
           stored = lookup(overlay_to_use, key, delta.fid);
-        if (stored == nullptr)
-          throw std::runtime_error(fmt::format("[ERROR] IFRAME validation failed! Overlay key {} not found in the overlay map", key.format()));
+        if (stored == nullptr) {
+          const std::bitset<512>* cp_value = lookup(overlay, key, delta.fid);
+          throw iframe_mismatch_error(fmt::format("[ERROR] IFRAME validation failed! Overlay key {} not found in the overlay map\n\tFID = {}, Expected Value = {:#x}, CP Value = {}",
+                                                  key.format(), delta.fid, bitset_low_bits(delta.delta),
+                                                  cp_value != nullptr ? fmt::format("{:#x}", bitset_low_bits(*cp_value)) : std::string{"(none)"}),
+                                      template_id, delta.ipos, delta.fid);
+        }
 
         std::bitset<512> stored_value = *stored;
         const std::bitset<512>* base = relative_to != nullptr ? lookup(*relative_to, key, delta.fid) : nullptr;
