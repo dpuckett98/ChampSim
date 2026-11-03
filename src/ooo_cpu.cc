@@ -965,7 +965,7 @@ long O3_CPU::retire_rob()
   }
 
   uint64_t cycles = current_time.time_since_epoch() / clock_period;
-  handle_event<Event::RETIRE>(cpu, retire_begin, retire_end, cycles);
+  champsim::listeners::retire(cpu, retire_begin, retire_end, cycles);
 
   auto retire_count = std::distance(retire_begin, retire_end);
   num_retired += retire_count;

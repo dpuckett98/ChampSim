@@ -212,7 +212,7 @@ std::vector<phase_stats> main(modules::environment_module& env, std::vector<phas
   for (auto phase : phases) {
     auto [phase_name, is_warmup, length, trace_index, trace_names] = phase;
 
-    handle_event<Event::BEGIN_PHASE>(is_warmup);
+    champsim::listeners::begin_phase(is_warmup);
 
     // Cache the source_consumer view once per phase; the per-cycle and
     // entity-completion hooks would otherwise call typed_view every cycle.

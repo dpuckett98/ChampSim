@@ -1150,6 +1150,29 @@ struct module_base {
   };
 
   /**
+   * Listener interface — observes simulation events without affecting timing.
+   *
+   * Listeners are attached to the environment as top-level
+   * ``"module": "listener"`` children of an explicit config. Every hook is a
+   * no-op by default, so an implementation overrides only the events it
+   * cares about.
+   * The default implementation is ``HEARTBEAT``, which prints periodic
+   * progress lines.
+   */
+  struct listener : public module_base<listener, environment_module> {
+    virtual ~listener() = default;
+
+    // Called at the start of each phase
+    virtual void begin_phase([[maybe_unused]] bool is_warmup) {}
+
+    // Called each cycle that a core retires instructions; [begin, end) are the retiring ROB entries
+    virtual void retire([[maybe_unused]] uint32_t cpu, [[maybe_unused]] std::deque<ooo_model_instr>::const_iterator begin,
+                        [[maybe_unused]] std::deque<ooo_model_instr>::const_iterator end, [[maybe_unused]] uint64_t cycle)
+    {
+    }
+  };
+
+  /**
    * Interface for the top-level environment module.
    *
    * The environment owns and constructs the entire simulation. It provides

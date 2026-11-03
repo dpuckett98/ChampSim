@@ -35,13 +35,14 @@ ChampSim distinguishes between **interfaces** and **implementations**:
   actual behavior. ChampSim ships default implementations (e.g. ``DEFAULT_CACHE``,
   ``DEFAULT_CORE``, ``lru``, ``hashed_perceptron``, ``ip_stride``, etc.).
 
-When writing a new module, you implement an existing interface. The four user-facing
+When writing a new module, you implement an existing interface. The five user-facing
 module interfaces are:
 
 * ``champsim::modules::branch_predictor`` — attached to a core
 * ``champsim::modules::btb`` — attached to a core
 * ``champsim::modules::prefetcher`` — attached to a cache
 * ``champsim::modules::replacement`` — attached to a cache
+* ``champsim::modules::listener`` — attached to the environment (see `Listener Interface`_)
 
 Higher-level interfaces (``cache_module``, ``core_module``, ``memory_controller_module``,
 etc.) define the contracts that caches, cores, and DRAM controllers fulfill. The default
@@ -170,3 +171,30 @@ fulfill. Stats can be retrieved per channel.
 .. doxygenstruct:: champsim::modules::memory_controller_module
    :members:
 
+-----------------------------------
+Listener Interface
+-----------------------------------
+
+A ``listener`` observes simulation events without affecting timing. Every hook is a
+no-op by default, so an implementation overrides only the events it needs:
+
+* ``begin_phase(is_warmup)`` — called at the start of each phase.
+* ``retire(cpu, begin, end, cycle)`` — called each cycle a core retires instructions,
+  with ``[begin, end)`` spanning the retiring ROB entries.
+
+Register an implementation like any other module::
+
+    champsim::modules::listener::register_module<my_listener> reg("MY_LISTENER");
+
+A run's listeners come from two places:
+
+* top-level ``"module": "listener"`` children of an explicit config, e.g.
+  ``{"name": "hb", "module": "listener", "model": "HEARTBEAT", "heartbeat_frequency": 1000000}``;
+* a default ``HEARTBEAT`` listener, added when no heartbeat is attached yet. It prints every
+  ``heartbeat_frequency`` retired instructions, taken from the config's root-level
+  ``heartbeat_frequency`` (default 10000000).
+
+``--hide-heartbeat`` removes every ``HEARTBEAT`` listener.
+
+.. doxygenstruct:: champsim::modules::listener
+   :members:

@@ -1,112 +1,47 @@
 #ifndef HEARTBEAT_H
 #define HEARTBEAT_H
 
-#include <chrono>
+#include <cstdint>
 #include <deque>
 #include <iostream>
 #include <vector>
-#include <fmt/chrono.h>
 
-#include "events.h"
 #include "instruction.h"
+#include "modules.h"
 
-class Heartbeat
+namespace champsim
+{
+/**
+ * Listener that periodically prints each core's progress: retired instructions, cycles, and the IPC since the last printout and since the start of the
+ * phase.
+ *
+ * Model name: ``HEARTBEAT``. Parameters:
+ * - ``heartbeat_frequency`` (default 10000000): the number of retired instructions between printouts.
+ */
+class heartbeat : public champsim::modules::listener
 {
 public:
-  std::ostream* std_out;
+  static constexpr uint64_t default_frequency = 10000000;
 
-  explicit Heartbeat(std::ostream* so) { std_out = so; }
+  std::ostream* std_out = &std::cout;
 
-  static constexpr auto cli_key = "Heartbeat";
-
-  uint64_t cycles_between_printouts = 10000000;
+  uint64_t cycles_between_printouts = default_frequency;
   std::vector<uint64_t> num_retired_last_printout;
   std::vector<uint64_t> cycles_last_printout;
   std::vector<uint64_t> num_retired;
 
   std::vector<uint64_t> num_retired_start_phase;
   std::vector<uint64_t> cycles_start_phase;
-  std::vector<bool> switched_phase; // true if there has been a begin_phase event since the last time RETIRE occurred
+  std::vector<bool> switched_phase; // true if there has been a begin_phase event since the last time this CPU retired
 
-  template <Event e, typename... Args>
-  void handle_event(Args&&... args);
+  explicit heartbeat(champsim::modules::ModuleBuilder builder);
 
-  void add_cpu(uint32_t cpu)
-  {
-    while (cpu >= switched_phase.size()) {
-      num_retired_last_printout.push_back(0);
-      cycles_last_printout.push_back(0);
-      num_retired.push_back(0);
-      num_retired_start_phase.push_back(0);
-      cycles_start_phase.push_back(0);
-      switched_phase.push_back(false);
-    }
-  }
+  void begin_phase(bool is_warmup) override;
+  void retire(uint32_t cpu, std::deque<ooo_model_instr>::const_iterator begin, std::deque<ooo_model_instr>::const_iterator end, uint64_t cycle) override;
+
+private:
+  void add_cpu(uint32_t cpu);
 };
-
-std::chrono::seconds elapsed_time();
-
-namespace heartbeat
-{
-
-template <Event e, typename... Args>
-inline void handle_event(Heartbeat* hb, Args&... args)
-{
-  // std::cout << "WARNING: generic handle event\n";
-}
-
-template <>
-inline void handle_event<Event::BEGIN_PHASE>(Heartbeat* hb, [[maybe_unused]] bool& is_warmup)
-{
-  for (size_t i = 0; i < hb->switched_phase.size(); i++) {
-    hb->switched_phase[i] = true;
-  }
-}
-
-template <>
-inline void handle_event<Event::RETIRE>(Heartbeat* hb, uint32_t& cpu, std::deque<ooo_model_instr>::const_iterator& begin,
-                                        std::deque<ooo_model_instr>::const_iterator& end, uint64_t& current_cycles)
-{
-  hb->add_cpu(cpu);
-  hb->num_retired[cpu] += std::distance(begin, end);
-
-  if (hb->switched_phase[cpu]) {
-    hb->switched_phase[cpu] = false;
-    hb->num_retired_start_phase[cpu] = hb->num_retired[cpu];
-    hb->cycles_start_phase[cpu] = current_cycles;
-  }
-
-  if (hb->num_retired[cpu] >= hb->num_retired_last_printout[cpu] + hb->cycles_between_printouts) {
-
-    auto heartbeat_instr = static_cast<double>(hb->num_retired[cpu] - hb->num_retired_last_printout[cpu]);
-    auto heartbeat_cycle = static_cast<double>(current_cycles - hb->cycles_last_printout[cpu]);
-
-    auto phase_instr = static_cast<double>(hb->num_retired[cpu] - hb->num_retired_start_phase[cpu]);
-    auto phase_cycle = static_cast<double>(current_cycles - hb->cycles_start_phase[cpu]);
-
-    fmt::print(*(hb->std_out),
-               "Heartbeat CPU {} instructions: {} cycles: {} heartbeat IPC: {:.4} cumulative IPC: {:.4} (Simulation time: {:%H hr %M min %S sec})\n", cpu,
-               hb->num_retired[cpu], current_cycles, heartbeat_instr / heartbeat_cycle, phase_instr / phase_cycle, elapsed_time());
-
-    // Advance the heartbeat baseline by exact multiples of
-    // ``cycles_between_printouts`` rather than snapping to the current
-    // retired count.  When more than one instruction retires in the same
-    // cycle, ``num_retired`` can overshoot the threshold; snapping would
-    // accumulate that overshoot every heartbeat and permanently displace
-    // when subsequent heartbeats fire.
-    auto overshoot = hb->num_retired[cpu] - hb->num_retired_last_printout[cpu];
-    auto whole_periods = overshoot / hb->cycles_between_printouts;
-    hb->num_retired_last_printout[cpu] += whole_periods * hb->cycles_between_printouts;
-    hb->cycles_last_printout[cpu] = current_cycles;
-  }
-}
-
-} // namespace heartbeat
-
-template <Event e, typename... Args>
-void Heartbeat::handle_event(Args&&... args)
-{
-  heartbeat::handle_event<e>(this, std::forward<Args>(args)...);
-}
+} // namespace champsim
 
 #endif
