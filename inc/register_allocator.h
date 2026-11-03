@@ -34,9 +34,18 @@ public:
   void complete_dest_register(PHYSICAL_REGISTER_ID physreg);
   void retire_dest_register(PHYSICAL_REGISTER_ID physreg);
   void free_register(PHYSICAL_REGISTER_ID physreg);
-  bool isValid(PHYSICAL_REGISTER_ID physreg) const;
-  bool isAllocated(PHYSICAL_REGISTER_ID archreg, bool wrong_path = false) const;
-  unsigned long count_free_registers() const;
+  // Defined here so the scheduler and issue loops, which call these once per ROB entry every cycle, can inline them
+  bool isValid(PHYSICAL_REGISTER_ID physreg) const
+  {
+    if (physreg < 0 || static_cast<size_t>(physreg) >= physical_register_file.size())
+      return false;
+    return physical_register_file[physreg].valid;
+  }
+  bool isAllocated(PHYSICAL_REGISTER_ID archreg, bool wrong_path = false) const
+  {
+    return (wrong_path ? wrong_path_RAT[archreg] : correct_path_RAT[archreg]) != -1;
+  }
+  unsigned long count_free_registers() const { return std::size(free_registers); }
   int count_reg_dependencies(const ooo_model_instr& instr) const;
   void reset_wrong_path_RAT();
   void print_deadlock();
