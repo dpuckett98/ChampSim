@@ -902,7 +902,14 @@ class wrong_path_tracereader
       uint64_t suffix = 0; // the number after the field name's prefix, for the indexed fields
       std::string name;
     };
-    std::unordered_map<uint64_t, field_info> field_infos; // field ID -> how generate_instruction treats it
+    std::vector<std::optional<field_info>> field_infos; // field ID -> how generate_instruction treats it; empty for IDs the header doesn't define
+
+    [[nodiscard]] const field_info& get_field_info(const uint64_t fid) const
+    {
+      if (fid >= field_infos.size() || !field_infos[fid].has_value())
+        throw std::out_of_range(fmt::format("[ERROR] FID {} does not exist in the header", fid));
+      return *field_infos[fid];
+    }
 
     enum class opcode_status : uint8_t { NO_MAP, UNKNOWN_ID, NOT_BRANCH, BRANCH };
     std::array<opcode_status, 256> opcode_infos{};
@@ -996,7 +1003,10 @@ class wrong_path_tracereader
             info.kind = field_kind::BRANCH_TAKEN;
           else if (fid_name == "CST_FID_BRANCH_TARGET")
             info.kind = field_kind::BRANCH_TARGET;
-          field_infos.emplace(fid, std::move(info));
+          if (fid >= field_infos.size())
+            field_infos.resize(fid + 1);
+          if (!field_infos[fid].has_value()) // keep the first name for an ID, as unordered_map::emplace did
+            field_infos[fid] = std::move(info);
         }
       }
 
@@ -1107,7 +1117,7 @@ class wrong_path_tracereader
       bool branch_taken = false;
       uint64_t branch_target = 0xdeadbeef;
       for (const auto& [fid, delta] : fields) {
-        const field_info& info = field_infos.at(fid);
+        const field_info& info = get_field_info(fid);
         switch (info.kind) {
         case field_kind::N_LOADS:
           n_loads = delta;
