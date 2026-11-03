@@ -754,7 +754,8 @@ class wrong_path_tracereader
       uint32_t template_id;
       delta_section cp_delta;
       std::optional<wp_chain_section> wp_chain;
-      bool wp_deltas_added = false;
+      std::size_t wp_blocks_applied = 0; // Number of WP chain blocks (from the front) whose deltas have been applied to the WP overlay
+      bool wp_deltas_added = false;      // True once every WP chain block's deltas have been applied
     };
 
     stream_reader<BodyCompressedType> compressed_body_stream;
@@ -1319,69 +1320,82 @@ class wrong_path_tracereader
       out.insert(out.end(), p, primary.end());
       out.insert(out.end(), s, secondary.end());
     }
-    overlay_slot merged_fields; // scratch space for construct_wp_instructions, kept to reuse its allocation
+    overlay_slot merged_fields; // scratch space for construct_next_wp_block, kept to reuse its allocation
 
-    [[nodiscard]] constexpr std::vector<ooo_model_instr> construct_wp_instructions(const wp_chain_section& wp_chain)
+    // Applies the deltas of the chain's next block to the WP overlay and generates that block's instructions. WP instructions are built one block at a time
+    // because the core usually flushes long before the end of the chain; the deltas of the blocks it never reaches are applied by finish_wp_chain
+    [[nodiscard]] std::vector<ooo_model_instr> construct_next_wp_block(body_entry& entry)
     {
-      // Create a map of faulting instructions
-      std::map<uint64_t, std::set<uint64_t>> faulting_instructions;
+      const wp_chain_section& wp_chain = entry.wp_chain.value();
+      const std::size_t block = entry.wp_blocks_applied;
+
+      // The instruction positions in this block that the chain's events mark as faulting
+      bool has_faulting = false;
+      std::set<uint64_t> faulting_ipos;
       if (wp_chain.events) {
-        for (std::size_t i = 0; i < wp_chain.events.value().wp_index.size(); i++)
-          if (wp_chain.events.value().fault_instr_index[i])
-            faulting_instructions[wp_chain.events.value().wp_index[i]].insert(wp_chain.events.value().fault_instr_index[i].value());
-      }
-
-      // Generate wrong path instructions from wp_chain and set the event flags appropriately. Reserve the whole chain up front: growing the vector one block at a
-      // time with reserve(size() + n) reallocates (and moves every instruction so far) on every block
-      std::vector<ooo_model_instr> retvec;
-      std::size_t chain_instrs = 0;
-      for (std::size_t i = 0; i < wp_chain.num_wp; i++)
-        chain_instrs += get_template(wp_chain.template_ids[i]).tmpl->instructions.size();
-      retvec.reserve(chain_instrs);
-      FlatOverlay& wp_overlay = wp_state.value().overlay;
-      for (std::size_t i = 0; i < wp_chain.num_wp; i++) {
-        const uint32_t template_id = wp_chain.template_ids[i];
-        const auto& deltas = wp_chain.wp_deltas[i];
-        const template_ref& ref = get_template(template_id);
-        const auto& bb_template = *ref.tmpl;
-        const auto& instructions = bb_template.instructions;
-
-	//fmt::print(stderr, "[INFO] construct_wp_instructions\n");
-        apply_deltas_to_overlay(deltas, wp_overlay, &overlay, template_id);
-        //fmt::print(stderr, "[INFO] Applied deltas for {}\n", template_id);
-
-        const std::size_t num_instr = instructions.size();
-        uint64_t pc = bb_template.start_pc;
-        uint64_t _;
-        for (uint64_t ipos = 0; ipos < num_instr; ipos++) {
-          // Fields the WP never changed aren't in the WP overlay (the trace has no delta for them), so they hold the CP value
-          merge_fields(wp_overlay[ref.base + ipos], overlay[ref.base + ipos], merged_fields);
-          retvec.emplace_back(generate_instruction<true>(pc, instructions[ipos], merged_fields, _));
-          retvec.back().set_wp_event_flags(); // Mark as wrong path non-faulting instruction
-
-          if (faulting_instructions.find(i) != faulting_instructions.end()) {
-            const auto& faulting_ipos_set = faulting_instructions[i];
-            const bool is_faulting = faulting_ipos_set.find(ipos) != faulting_ipos_set.end();
-            retvec.back().set_wp_event_flags(is_faulting); // Mark as wrong path faulting instruction
+        const auto& events = wp_chain.events.value();
+        for (std::size_t i = 0; i < events.wp_index.size(); i++) {
+          if (events.wp_index[i] == block && events.fault_instr_index[i]) {
+            has_faulting = true;
+            faulting_ipos.insert(events.fault_instr_index[i].value());
           }
         }
-        //fmt::print(stderr, "[INFO] Generated instructions for {}, size = {}\n", template_id, retvec.size());
       }
 
-      //fmt::print(stderr, "[INFO] Generated {} wrong path instructions\n", retvec.size());
-      //for (const auto& instr : retvec)
-        //fmt::print(stderr, "[INFO] {:x}: branch = {}, taken = {}, dst regs = {}, src regs = {}, is_wp = {}, is_wp_fault = {}\n", instr.ip.to<uint64_t>(),
-                   //instr.is_branch, instr.branch_taken, instr.destination_registers, instr.source_registers, instr.is_wp, instr.is_wp_fault);
+      const uint32_t template_id = wp_chain.template_ids[block];
+      const template_ref& ref = get_template(template_id);
+      const auto& instructions = ref.tmpl->instructions;
+      FlatOverlay& wp_overlay = wp_state.value().overlay;
 
+      apply_deltas_to_overlay(wp_chain.wp_deltas[block], wp_overlay, &overlay, template_id);
+      mark_wp_block_applied(entry);
+
+      std::vector<ooo_model_instr> retvec;
+      retvec.reserve(instructions.size());
+      uint64_t pc = ref.tmpl->start_pc;
+      uint64_t _;
+      for (uint64_t ipos = 0; ipos < instructions.size(); ipos++) {
+        // Fields the WP never changed aren't in the WP overlay (the trace has no delta for them), so they hold the CP value
+        merge_fields(wp_overlay[ref.base + ipos], overlay[ref.base + ipos], merged_fields);
+        retvec.emplace_back(generate_instruction<true>(pc, instructions[ipos], merged_fields, _));
+        retvec.back().set_wp_event_flags(); // Mark as wrong path non-faulting instruction
+        if (has_faulting)
+          retvec.back().set_wp_event_flags(faulting_ipos.find(ipos) != faulting_ipos.end()); // Mark as wrong path faulting instruction
+      }
       return retvec;
     }
 
-    [[nodiscard]] constexpr std::optional<std::vector<ooo_model_instr>> start_wp(body_entry& entry)
+    constexpr void mark_wp_block_applied(body_entry& entry) noexcept
     {
-      //fmt::print(stderr, "[INFO] Starting wrong path from template {}\n", entry.template_id);
+      entry.wp_blocks_applied++;
+      if (entry.wp_blocks_applied == entry.wp_chain.value().num_wp)
+        entry.wp_deltas_added = true;
+    }
+
+    // Applies the WP deltas of the chain blocks that haven't been applied yet, without generating their instructions. WP deltas are cumulative per template,
+    // so every block's deltas have to be applied, whether or not the core fetched it
+    constexpr void finish_wp_chain(body_entry& entry)
+    {
+      if (entry.wp_deltas_added || !entry.wp_chain.has_value())
+        return;
+      const wp_chain_section& wp_chain = entry.wp_chain.value();
+      while (entry.wp_blocks_applied < wp_chain.num_wp) {
+        if (!wp_state)
+          make_wp_state();
+        const std::size_t block = entry.wp_blocks_applied;
+        apply_deltas_to_overlay(wp_chain.wp_deltas[block], wp_state.value().overlay, &overlay, wp_chain.template_ids[block]);
+        mark_wp_block_applied(entry);
+      }
+    }
+
+    // Returns the next block of WP instructions for the entry's WP chain, or falls back to trace inferred wrong path once the chain is used up
+    [[nodiscard]] std::optional<std::vector<ooo_model_instr>> next_wp_block(body_entry& entry)
+    {
+      if (entry.wp_deltas_added)
+        return continue_wp();
 
       if (!wp_enabled)
-	return std::nullopt;
+        return std::nullopt;
 
       if (not entry.wp_chain)
         throw std::runtime_error(fmt::format("[ERROR] WP chain is unavailable. Can't start WP!"));
@@ -1389,15 +1403,11 @@ class wrong_path_tracereader
       if (!wp_state)
         make_wp_state();
 
-      const wp_chain_section& wp_chain = entry.wp_chain.value();
-
       // Wrong path isn't available. Fall back to trace inferred wrong path
-      if (wp_chain.num_wp == 0)
+      if (entry.wp_chain.value().num_wp == 0)
         return continue_wp();
 
-      entry.wp_deltas_added = true;
-
-      return construct_wp_instructions(wp_chain);
+      return construct_next_wp_block(entry);
     }
 
     constexpr void handle_thread_switch()
@@ -1886,7 +1896,7 @@ class wrong_path_tracereader
       if (instr_buffer.size() == 0)
         throw std::runtime_error(fmt::format("[ERROR] Attempting to pop from empty instruction buffer"));
 
-      const auto retval = instr_buffer.front();
+      auto retval = std::move(instr_buffer.front());
       instr_buffer.pop_front();
       // the buffer holds both CP and WP instrs.; only CP instrs. count towards the trace's total_target_instructions
       if (!retval.is_wp)
@@ -1991,6 +2001,11 @@ class wrong_path_tracereader
       prev_branch_taken = last_cp_branch_taken;
       prev_branch_target = last_cp_branch_target;
       instr_buffer.clear(); // flush WP instrs. from instr_buffer
+
+      // The WP episode is over: apply the deltas of the chain blocks the core didn't reach. A chain the episode never started is left for the next CP read,
+      // and a re-steer onto the same entry gets no more WP instructions from it
+      if (wp_enabled && last_body_entry.has_value() && last_body_entry->wp_blocks_applied > 0)
+        finish_wp_chain(last_body_entry.value());
     }
 
     [[nodiscard]] constexpr std::optional<ooo_model_instr> read(const bool from_cp = true)
@@ -2005,8 +2020,12 @@ class wrong_path_tracereader
         if (instr_buffer.size() > 0)
           return pop_from_instr_buffer();
 
-        // We should never reach this point
-        throw std::runtime_error("[ERROR] No more instructions left to read. Exiting...");
+        // A WP chain that was started before the trace ended can still have blocks left to build
+        const bool wp_chain_in_progress = !from_cp && last_body_entry.has_value() && last_body_entry->wp_blocks_applied > 0 && !last_body_entry->wp_deltas_added;
+        if (!wp_chain_in_progress) {
+          // We should never reach this point
+          throw std::runtime_error("[ERROR] No more instructions left to read. Exiting...");
+        }
       }
 
       // Time to re-fill the buffer
@@ -2015,26 +2034,14 @@ class wrong_path_tracereader
       if (instr_buffer.size() == 0) {
 	std::optional<std::vector<ooo_model_instr>> retvec;
 	if (from_cp) {
-          if (wp_enabled && last_body_entry.has_value() && !last_body_entry->wp_deltas_added && !first_entry) {
-            for (std::size_t i = 0; i < last_body_entry->wp_chain->num_wp; i++) {
-              const uint32_t template_id = last_body_entry->wp_chain->template_ids[i];
-              const auto& deltas = last_body_entry->wp_chain->wp_deltas[i];
-              //fmt::print(stderr, "[INFO] read\n");
-              if (!wp_state)
-                make_wp_state();
-              apply_deltas_to_overlay(deltas, wp_state.value().overlay, &overlay, template_id);
-              //fmt::print(stderr, "[INFO] Skipping WP, so applied deltas for {}; # instrs = {}, # deltas = {}\n", template_id, instructions.size(), deltas.records.size());
-            }
-          }
+          // Apply the WP deltas of the previous entry's chain if the core didn't go down it
+          if (wp_enabled && last_body_entry.has_value() && !first_entry)
+            finish_wp_chain(last_body_entry.value());
           last_body_entry.emplace(handle_entry());
           retvec = continue_cp(last_body_entry.value()); //construct_instructions(last_body_entry.value(), from_cp);
           read_till_next_entry();
 	} else {
-          if (!last_body_entry->wp_deltas_added) {
-            retvec = start_wp(last_body_entry.value());
-          } else {
-            retvec = continue_wp();
-          }
+          retvec = next_wp_block(last_body_entry.value());
 	}
 	if (!retvec.has_value())
           return std::nullopt;
