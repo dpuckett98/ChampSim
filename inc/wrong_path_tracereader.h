@@ -776,13 +776,70 @@ class wrong_path_tracereader
       std::string format() const noexcept { return fmt::format("(Template ID = {}, Instruction Position = {})", template_id, ipos); }
     };
 
+    // One field's value. An overlay slot holds one instruction's fields sorted by fid, the order generate_instruction consumes them in (which decides the order
+    // of the instruction's memory operands)
+    struct overlay_entry {
+      uint64_t fid;
+      field_value value;
+    };
+    using overlay_slot = std::vector<overlay_entry>;
+
+    // Dense overlay: one slot per template instruction, at template_refs[template_id].base + ipos. Slots are never cleared, so once an instruction's fields
+    // have been seen, updating them doesn't allocate
+    using FlatOverlay = std::vector<overlay_slot>;
+    // Sparse overlay, used for the small temporary overlays the IFRAME validation builds. Each value is a fid -> value map
     using OverlayType = std::map<overlay_key, std::map<uint64_t, field_value>>;
-    OverlayType overlay; // Each overlay value is a fid -> delta map
+
+    FlatOverlay overlay;
 
     struct wp_state_type {
       RegFileType regfile;
-      OverlayType overlay;
+      FlatOverlay overlay;
     };
+
+    // A template and the index of its first slot in a FlatOverlay, indexed by template ID (template IDs are dense)
+    struct template_ref {
+      const header_wrapper::Template* tmpl = nullptr;
+      std::size_t base = 0;
+    };
+    std::vector<template_ref> template_refs;
+    std::size_t num_overlay_slots = 0;
+
+    [[nodiscard]] const template_ref& get_template(const uint32_t template_id) const
+    {
+      if (template_id >= template_refs.size() || template_refs[template_id].tmpl == nullptr)
+        throw std::out_of_range(fmt::format("[ERROR] Template #{} does not exist in the header", template_id));
+      return template_refs[template_id];
+    }
+
+    [[nodiscard]] static constexpr const field_value* find_field(const overlay_slot& slot, const uint64_t fid) noexcept
+    {
+      for (const auto& entry : slot)
+        if (entry.fid == fid)
+          return &entry.value;
+      return nullptr;
+    }
+
+    // Adds delta to the field's value. A field the slot doesn't hold yet starts from its value in backup if backup holds it, otherwise from 0
+    static constexpr void add_to_field(overlay_slot& slot, const uint64_t fid, const field_value delta, const overlay_slot* backup)
+    {
+      auto iter = slot.begin();
+      while (iter != slot.end() && iter->fid < fid)
+        ++iter;
+      if (iter != slot.end() && iter->fid == fid) {
+        iter->value = iter->value + delta;
+        return;
+      }
+      const field_value* backup_value = backup != nullptr ? find_field(*backup, fid) : nullptr;
+      slot.insert(iter, overlay_entry{fid, backup_value != nullptr ? *backup_value + delta : delta});
+    }
+
+    void make_wp_state()
+    {
+      wp_state = std::make_optional<wp_state_type>();
+      wp_state.value().overlay = FlatOverlay(num_overlay_slots); // WP fields start out absent and fall back to the CP overlay
+      wp_state.value().regfile = regfile; // Fork off a copy of the current regfile
+    }
     std::optional<wp_state_type> wp_state; // This state is forked from the correct path state at the beginning of the wrong path execution
 
     std::optional<body_entry>
@@ -1006,6 +1063,16 @@ class wrong_path_tracereader
         body_tag_kinds[tag] = kind;
       }
 
+      // Templates, indexed by ID, and where each one's instructions live in a FlatOverlay
+      num_overlay_slots = 0;
+      if (!header.templates.empty())
+        template_refs.resize(static_cast<std::size_t>(header.templates.rbegin()->first) + 1);
+      for (const auto& [template_id, bb_template] : header.templates) {
+        template_refs[template_id] = template_ref{&bb_template, num_overlay_slots};
+        num_overlay_slots += bb_template.instructions.size();
+      }
+      overlay = FlatOverlay(num_overlay_slots);
+
       fid_extended = lookup_header_constant("field_id", "CST_FID_EXTENDED");
       wp_event_fault = lookup_header_constant("wp_event_flag", "CST_WP_EVENT_FAULT");
       wp_event_translation_unavail = lookup_header_constant("wp_event_flag", "CST_WP_EVENT_TRANSLATION_UNAVAIL");
@@ -1014,9 +1081,10 @@ class wrong_path_tracereader
       has_wp_chain_flag_map = header.ids.find("wp_chain_flag") != header.ids.end();
     }
 
+    // fields holds the instruction's (fid, value) pairs sorted by fid
     template <bool wrong_path = false>
     [[nodiscard]] constexpr ooo_model_instr generate_instruction(uint64_t& instruction_pc, const header_wrapper::Instruction& instruction_template,
-                                                                 const std::map<uint64_t, field_value>& deltas, uint64_t& next_pc)
+                                                                 const overlay_slot& fields, uint64_t& next_pc)
     {
       const auto to_int64_t = [] [[nodiscard]] (const field_value value) -> int64_t {
         int64_t retval = 0;
@@ -1038,7 +1106,7 @@ class wrong_path_tracereader
       uint64_t max_observed_store_count = 0;
       bool branch_taken = false;
       uint64_t branch_target = 0xdeadbeef;
-      for (const auto& [fid, delta] : deltas) {
+      for (const auto& [fid, delta] : fields) {
         const field_info& info = field_infos.at(fid);
         switch (info.kind) {
         case field_kind::N_LOADS:
@@ -1142,29 +1210,38 @@ class wrong_path_tracereader
                              dst_mem, src_mem);
     }
 
-    constexpr void apply_deltas_to_overlay(const delta_section& delta_sec, OverlayType& overlay_to_use, std::optional<std::reference_wrapper<OverlayType>> backup_overlay, const uint32_t template_id,
-                                           const std::size_t num_instrs)
+    // Applies a delta section to overlay_to_use. A field overlay_to_use doesn't hold yet starts from its value in backup_overlay, if given and it holds it
+    constexpr void apply_deltas_to_overlay(const delta_section& delta_sec, FlatOverlay& overlay_to_use, const FlatOverlay* backup_overlay, const uint32_t template_id)
     {
-      const auto& deltas = delta_sec.records;
-      for (const auto& delta : deltas) {
+      const template_ref& ref = get_template(template_id);
+      const std::size_t num_instrs = ref.tmpl->instructions.size();
+      for (const auto& delta : delta_sec.records) {
         if (delta.ipos >= num_instrs)
           throw std::runtime_error(
               fmt::format("[ERROR] Illegal instruction position {} found for template {} with {} instructions", delta.ipos, template_id, num_instrs));
 
-        const overlay_key key(template_id, delta.ipos);
-        //fmt::print(stderr, "{},{},{}\n", template_id, delta.ipos, delta.fid);
-        if (overlay_to_use.find(key) == overlay_to_use.end() || overlay_to_use[key].find(delta.fid) == overlay_to_use[key].end()) {
-	  if (!backup_overlay.has_value() || backup_overlay.value().get().find(key) == backup_overlay.value().get().end() || backup_overlay.value().get()[key].find(delta.fid) == backup_overlay.value().get()[key].end()) {
-	    //fmt::print(stderr, "{},{},{}\n New value {}\n", template_id, delta.ipos, delta.fid, delta.delta);
-            overlay_to_use[key][delta.fid] = delta.delta;
-	  } else {
-            //fmt::print(stderr, "{},{},{}\n Previous value from backup overlay {}\ndelta {}\n", template_id, delta.ipos, delta.fid, backup_overlay.value().get()[key][delta.fid], delta.delta);
-	    overlay_to_use[key][delta.fid] = backup_overlay.value().get()[key][delta.fid] + delta.delta;
-	  }
-	} else {
-	  //fmt::print(stderr, "{},{},{}\n Previous value {}\ndelta {}\n", template_id, delta.ipos, delta.fid, overlay_to_use[key][delta.fid], delta.delta);
-          overlay_to_use[key][delta.fid] = overlay_to_use[key][delta.fid] + delta.delta;
-	}
+        const std::size_t slot = ref.base + delta.ipos;
+        add_to_field(overlay_to_use[slot], delta.fid, delta.delta, backup_overlay != nullptr ? &(*backup_overlay)[slot] : nullptr);
+      }
+    }
+
+    // The same for a sparse overlay, with backup_overlay (a FlatOverlay) as the fallback
+    constexpr void apply_deltas_to_overlay(const delta_section& delta_sec, OverlayType& overlay_to_use, const FlatOverlay& backup_overlay, const uint32_t template_id) const
+    {
+      const template_ref& ref = get_template(template_id);
+      const std::size_t num_instrs = ref.tmpl->instructions.size();
+      for (const auto& delta : delta_sec.records) {
+        if (delta.ipos >= num_instrs)
+          throw std::runtime_error(
+              fmt::format("[ERROR] Illegal instruction position {} found for template {} with {} instructions", delta.ipos, template_id, num_instrs));
+
+        auto& fields = overlay_to_use[overlay_key(template_id, delta.ipos)];
+        if (const auto iter = fields.find(delta.fid); iter != fields.end()) {
+          iter->second = iter->second + delta.delta;
+        } else {
+          const field_value* backup_value = find_field(backup_overlay[ref.base + delta.ipos], delta.fid);
+          fields[delta.fid] = backup_value != nullptr ? *backup_value + delta.delta : delta.delta;
+        }
       }
     }
 
@@ -1191,10 +1268,11 @@ class wrong_path_tracereader
 
     [[nodiscard]] constexpr std::vector<ooo_model_instr> continue_cp(const body_entry& entry)
     {
-      const auto& bb_template = header.templates.at(entry.template_id);
+      const template_ref& ref = get_template(entry.template_id);
+      const auto& bb_template = *ref.tmpl;
       const auto& instructions = bb_template.instructions;
 
-      apply_deltas_to_overlay(entry.cp_delta, overlay, std::nullopt, entry.template_id, instructions.size());
+      apply_deltas_to_overlay(entry.cp_delta, overlay, nullptr, entry.template_id);
 
       // Generate instructions
       const std::size_t num_instr = instructions.size();
@@ -1203,8 +1281,7 @@ class wrong_path_tracereader
       uint64_t pc = bb_template.start_pc;
       uint64_t next_pc = pc; // The PC for the instruction after this instruction
       for (uint64_t ipos = 0; ipos < num_instr; ipos++) {
-        const overlay_key key(entry.template_id, ipos);
-        retvec.emplace_back(generate_instruction(pc, instructions[ipos], overlay[key], next_pc));
+        retvec.emplace_back(generate_instruction(pc, instructions[ipos], overlay[ref.base + ipos], next_pc));
       }
 
       //next_cp_bb_pc = next_pc;
@@ -1212,6 +1289,27 @@ class wrong_path_tracereader
 
       return retvec;
     }
+
+    // Merges two sorted slots into out (sorted), taking primary's value for a fid both hold
+    static constexpr void merge_fields(const overlay_slot& primary, const overlay_slot& secondary, overlay_slot& out)
+    {
+      out.clear();
+      auto p = primary.begin();
+      auto s = secondary.begin();
+      while (p != primary.end() && s != secondary.end()) {
+        if (p->fid < s->fid) {
+          out.push_back(*p++);
+        } else if (s->fid < p->fid) {
+          out.push_back(*s++);
+        } else {
+          out.push_back(*p++);
+          ++s;
+        }
+      }
+      out.insert(out.end(), p, primary.end());
+      out.insert(out.end(), s, secondary.end());
+    }
+    overlay_slot merged_fields; // scratch space for construct_wp_instructions, kept to reuse its allocation
 
     [[nodiscard]] constexpr std::vector<ooo_model_instr> construct_wp_instructions(const wp_chain_section& wp_chain)
     {
@@ -1228,28 +1326,27 @@ class wrong_path_tracereader
       std::vector<ooo_model_instr> retvec;
       std::size_t chain_instrs = 0;
       for (std::size_t i = 0; i < wp_chain.num_wp; i++)
-        chain_instrs += header.templates.at(wp_chain.template_ids[i]).instructions.size();
+        chain_instrs += get_template(wp_chain.template_ids[i]).tmpl->instructions.size();
       retvec.reserve(chain_instrs);
+      FlatOverlay& wp_overlay = wp_state.value().overlay;
       for (std::size_t i = 0; i < wp_chain.num_wp; i++) {
         const uint32_t template_id = wp_chain.template_ids[i];
         const auto& deltas = wp_chain.wp_deltas[i];
-        const auto& bb_template = header.templates.at(template_id);
+        const template_ref& ref = get_template(template_id);
+        const auto& bb_template = *ref.tmpl;
         const auto& instructions = bb_template.instructions;
 
 	//fmt::print(stderr, "[INFO] construct_wp_instructions\n");
-        apply_deltas_to_overlay(deltas, wp_state.value().overlay, std::ref(overlay), template_id, instructions.size());
+        apply_deltas_to_overlay(deltas, wp_overlay, &overlay, template_id);
         //fmt::print(stderr, "[INFO] Applied deltas for {}\n", template_id);
 
         const std::size_t num_instr = instructions.size();
         uint64_t pc = bb_template.start_pc;
         uint64_t _;
         for (uint64_t ipos = 0; ipos < num_instr; ipos++) {
-          const overlay_key key(template_id, ipos);
           // Fields the WP never changed aren't in the WP overlay (the trace has no delta for them), so they hold the CP value
-          std::map<uint64_t, field_value> fields = wp_state.value().overlay[key];
-          if (const auto cp_iter = overlay.find(key); cp_iter != overlay.end())
-            fields.insert(cp_iter->second.begin(), cp_iter->second.end()); // insert doesn't overwrite WP values
-          retvec.emplace_back(generate_instruction<true>(pc, instructions[ipos], fields, _));
+          merge_fields(wp_overlay[ref.base + ipos], overlay[ref.base + ipos], merged_fields);
+          retvec.emplace_back(generate_instruction<true>(pc, instructions[ipos], merged_fields, _));
           retvec.back().set_wp_event_flags(); // Mark as wrong path non-faulting instruction
 
           if (faulting_instructions.find(i) != faulting_instructions.end()) {
@@ -1279,11 +1376,8 @@ class wrong_path_tracereader
       if (not entry.wp_chain)
         throw std::runtime_error(fmt::format("[ERROR] WP chain is unavailable. Can't start WP!"));
 
-      if (!wp_state) {
-        wp_state = std::make_optional<wp_state_type>();
-        wp_state.value().overlay = {}; //overlay; // Fork off a copy of the current overlay
-        wp_state.value().regfile = regfile; // Fork off a copy of the current regfile
-      }
+      if (!wp_state)
+        make_wp_state();
 
       const wp_chain_section& wp_chain = entry.wp_chain.value();
 
@@ -1478,7 +1572,7 @@ class wrong_path_tracereader
 
       const int64_t template_id_delta = compressed_body_stream.parse_sleb();
       const uint32_t current_template_id = static_cast<uint32_t>(static_cast<int64_t>(previous_template_id) + template_id_delta);
-      if (header.templates.find(current_template_id) == header.templates.end())
+      if (current_template_id >= template_refs.size() || template_refs[current_template_id].tmpl == nullptr)
         throw std::runtime_error(fmt::format("[ERROR] Unknown template ID {} found in trace body. Exiting...\n", current_template_id));
       previous_template_id = current_template_id;
       seq_num += 1;
@@ -1491,6 +1585,25 @@ class wrong_path_tracereader
       }
 
       return retval;
+    }
+
+    // Looks up a field's value in an overlay, returning nullptr if the overlay doesn't hold it
+    [[nodiscard]] static const field_value* lookup_field(const OverlayType& o, const overlay_key& key, const uint64_t fid)
+    {
+      const auto key_iter = o.find(key);
+      if (key_iter == o.end())
+        return nullptr;
+      const auto fid_iter = key_iter->second.find(fid);
+      return fid_iter == key_iter->second.end() ? nullptr : &fid_iter->second;
+    }
+    [[nodiscard]] const field_value* lookup_field(const FlatOverlay& o, const overlay_key& key, const uint64_t fid) const
+    {
+      if (key.template_id >= template_refs.size() || template_refs[key.template_id].tmpl == nullptr)
+        return nullptr;
+      const template_ref& ref = template_refs[key.template_id];
+      if (key.ipos >= ref.tmpl->instructions.size() || ref.base + key.ipos >= o.size())
+        return nullptr;
+      return find_field(o[ref.base + key.ipos], fid);
     }
 
     // Thrown when an IFRAME value doesn't match the stored value. Carries the failing field so callers can add diagnostics
@@ -1509,20 +1622,16 @@ class wrong_path_tracereader
     // from relative_to are compared as absolute values
     // fallback_overlay, if given, is used for fields missing from both pending_overlay and overlay_to_use (e.g. the CP overlay for WP fields the WP never
     // changed)
-    constexpr void validate_overlay(const OverlayType& overlay_to_use, const delta_section& delta_sec, const uint32_t template_id,
-                                    const OverlayType* pending_overlay = nullptr, const OverlayType* relative_to = nullptr,
-                                    const OverlayType* fallback_overlay = nullptr) const
+    // relative_to is either an OverlayType or a FlatOverlay
+    template <typename RelativeOverlay = OverlayType>
+    constexpr void validate_overlay(const FlatOverlay& overlay_to_use, const delta_section& delta_sec, const uint32_t template_id,
+                                    const OverlayType* pending_overlay = nullptr, const RelativeOverlay* relative_to = nullptr,
+                                    const FlatOverlay* fallback_overlay = nullptr) const
     {
-      if (header.templates.find(template_id) == header.templates.end())
+      if (template_id >= template_refs.size() || template_refs[template_id].tmpl == nullptr)
         throw std::runtime_error(fmt::format("[ERROR] Template #{} does not exist in the header. Validate failed!", template_id));
 
-      const auto lookup = [](const OverlayType& o, const overlay_key& key, const uint64_t fid) -> const field_value* {
-        const auto key_iter = o.find(key);
-        if (key_iter == o.end())
-          return nullptr;
-        const auto fid_iter = key_iter->second.find(fid);
-        return fid_iter == key_iter->second.end() ? nullptr : &fid_iter->second;
-      };
+      const auto lookup = [this](const auto& o, const overlay_key& key, const uint64_t fid) { return lookup_field(o, key, fid); };
 
       const auto& deltas = delta_sec.records;
       for (const auto& delta : deltas) {
@@ -1580,12 +1689,10 @@ class wrong_path_tracereader
         if (wp_state) {
           for (const auto& delta : deltas.records) {
             const overlay_key key(template_id, delta.ipos);
-            const auto key_iter = wp_state->overlay.find(key);
-            if (key_iter == wp_state->overlay.end() || pending[key].find(delta.fid) != pending[key].end())
+            const field_value* wp_value = lookup_field(wp_state->overlay, key, delta.fid);
+            if (wp_value == nullptr || lookup_field(pending, key, delta.fid) != nullptr)
               continue;
-            const auto fid_iter = key_iter->second.find(delta.fid);
-            if (fid_iter != key_iter->second.end())
-              pending[key][delta.fid] = fid_iter->second;
+            pending[key][delta.fid] = *wp_value;
           }
         }
 
@@ -1600,13 +1707,12 @@ class wrong_path_tracereader
             const overlay_key key(template_id, delta.ipos);
             if (pending.find(key) != pending.end() && pending.at(key).find(delta.fid) != pending.at(key).end())
               continue;
-            const auto cp_key_iter = overlay.find(key);
-            const bool in_cp = cp_key_iter != overlay.end() && cp_key_iter->second.find(delta.fid) != cp_key_iter->second.end();
-            (*previous_occurrence)[key][delta.fid] = in_cp ? cp_key_iter->second.at(delta.fid) : field_value{0};
+            const field_value* cp_value = lookup_field(overlay, key, delta.fid);
+            (*previous_occurrence)[key][delta.fid] = cp_value != nullptr ? *cp_value : field_value{0};
           }
         }
 
-        apply_deltas_to_overlay(deltas, pending, std::ref(overlay), template_id, header.templates.at(template_id).instructions.size());
+        apply_deltas_to_overlay(deltas, pending, overlay, template_id);
       }
 
       return pending;
@@ -1617,11 +1723,9 @@ class wrong_path_tracereader
                                                          const wp_chain_section& iframe_chain) const
     {
       const overlay_key key(template_id, ipos);
-      const auto value_in = [&](const OverlayType& o) -> std::string {
-        const auto key_iter = o.find(key);
-        if (key_iter == o.end() || key_iter->second.find(fid) == key_iter->second.end())
-          return "(none)";
-        return fmt::format("{:#x}", key_iter->second.at(fid));
+      const auto value_in = [&](const FlatOverlay& o) -> std::string {
+        const field_value* value = lookup_field(o, key, fid);
+        return value != nullptr ? fmt::format("{:#x}", *value) : std::string{"(none)"};
       };
 
       std::string retval = fmt::format("\tContributions to template {} ipos {} FID {}:\n\t\tWP overlay value before chain = {}\n\t\tCP value = {}", template_id,
@@ -1692,15 +1796,14 @@ class wrong_path_tracereader
 
             // The IFRAME stores a WP template's values relative to its previous occurrence: an earlier instance in the WP chain if there is one, otherwise the
             // CP execution if the WP template is the same as the CP template
-            const OverlayType* relative_to = nullptr;
-            if (repeated_templates.find(current_template_id) != repeated_templates.end())
-              relative_to = &previous_occurrence;
-            else if (current_template_id == previous_template_id)
-              relative_to = &overlay;
-
             const std::string where = fmt::format("WP validation of chain index {} of {} (template IDs: {})", i, num_entries, wp_chain.template_ids);
             try {
-              validate_overlay(wp_state.value().overlay, wp_chain.wp_deltas[i], current_template_id, &pending, relative_to, &overlay);
+              if (repeated_templates.find(current_template_id) != repeated_templates.end())
+                validate_overlay(wp_state.value().overlay, wp_chain.wp_deltas[i], current_template_id, &pending, &previous_occurrence, &overlay);
+              else if (current_template_id == previous_template_id)
+                validate_overlay(wp_state.value().overlay, wp_chain.wp_deltas[i], current_template_id, &pending, &overlay, &overlay);
+              else
+                validate_overlay(wp_state.value().overlay, wp_chain.wp_deltas[i], current_template_id, &pending, static_cast<const OverlayType*>(nullptr), &overlay);
             } catch (const iframe_mismatch_error& e) {
               throw with_context(e, where + "\n" + describe_wp_contributions(e.template_id, e.ipos, e.fid, wp_chain));
             } catch (const std::runtime_error& e) {
@@ -1906,15 +2009,10 @@ class wrong_path_tracereader
             for (std::size_t i = 0; i < last_body_entry->wp_chain->num_wp; i++) {
               const uint32_t template_id = last_body_entry->wp_chain->template_ids[i];
               const auto& deltas = last_body_entry->wp_chain->wp_deltas[i];
-              const auto& bb_template = header.templates.at(template_id);
-              const auto& instructions = bb_template.instructions;
               //fmt::print(stderr, "[INFO] read\n");
-              if (!wp_state) {
-                wp_state = std::make_optional<wp_state_type>();
-                wp_state.value().overlay = {}; //overlay; // Fork off a copy of the current overlay
-                wp_state.value().regfile = regfile; // Fork off a copy of the current regfile
-              }
-              apply_deltas_to_overlay(deltas, wp_state.value().overlay, std::ref(overlay), template_id, instructions.size());
+              if (!wp_state)
+                make_wp_state();
+              apply_deltas_to_overlay(deltas, wp_state.value().overlay, &overlay, template_id);
               //fmt::print(stderr, "[INFO] Skipping WP, so applied deltas for {}; # instrs = {}, # deltas = {}\n", template_id, instructions.size(), deltas.records.size());
             }
           }
