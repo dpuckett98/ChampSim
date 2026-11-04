@@ -213,8 +213,7 @@ ChampSim ships these listener models:
   core cycle has as many slots as the retire width. A slot that retires an instruction is
   *retiring*; a cycle's unused slots all go to one category, decided by the oldest instruction
   that didn't retire: *mis-speculating* (the ROB is empty while the core recovers from a
-  misprediction), *stalled* (the correct-path ROB head hasn't completed; broken down further by
-  where the head is in its lifecycle), or *drained* (the ROB is empty for any other reason, i.e.
+  misprediction), *stalled* (the correct-path ROB head hasn't completed), or *drained* (the ROB is empty for any other reason, i.e.
   the front end isn't supplying instructions). The counts are printed per core at the end of
   each non-warmup phase. Enable it with
   ``{"name": "cpi_stack", "module": "listener", "model": "RETIRE_CPI_STACK"}``.
@@ -222,7 +221,7 @@ ChampSim ships these listener models:
   *dispatching* (a slot that dispatched a correct-path instruction), *mis-speculating* (a slot
   that dispatched a wrong-path instruction, or unused slots while the oldest waiting instruction
   is on the wrong path or the core recovers from a misprediction), *stalled* (unused slots while
-  the oldest waiting instruction doesn't fit in the ROB, LQ, or SQ; broken down by which), or
+  the oldest waiting instruction doesn't fit in the ROB, LQ, or SQ), or
   *drained* (unused slots while the front end has nothing ready to dispatch).
 * ``ISSUE_CPI_STACK`` — the same breakdown at the issue stage, with execute-width slots:
   *issuing* (a slot that issued a correct-path instruction), *mis-speculating* (a slot that
@@ -232,9 +231,33 @@ ChampSim ships these listener models:
   nothing waits and the ROB, LQ, or SQ is full), or *drained* (unused slots while nothing waits
   and the front end isn't supplying instructions).
 
+In all three, stalled slots are broken down into *waiting on cache*, *waiting on dependencies*,
+and *other*, and drained slots into *waiting on cache* and *other*:
+
+* Retire and dispatch stalls are classified by the ROB head (whose retirement frees room in the
+  back end): waiting on cache when its load is in flight in the L1D (including the DTLB lookup),
+  waiting on dependencies when it waits for an operand or its load waits for an older store to
+  forward its data, and other otherwise (scheduling, execution, a load not yet sent to the L1D,
+  a pending store, ...).
+* Issue stalls are classified by the oldest unissued correct-path instruction: waiting on cache
+  when an operand it waits for comes from a load in flight in the L1D, waiting on dependencies
+  when it waits for any other operand, and other when it waits on scheduling or a physical
+  register. When nothing waits to issue and the back end is full, the ROB head decides, as above.
+* Drained slots are waiting on cache when the oldest instruction in the front end has been sent
+  to the L1I (including the ITLB lookup) and its block hasn't returned, and other otherwise
+  (decode and dispatch latency, the branch predictor, an empty fetch buffer, ...).
+
+The retire stack also breaks each stalled sub-category down by where the ROB head is in its
+lifecycle, printed as ``stalled <cause> - <state>`` right after the sub-category's line:
+waiting on cache into *load in flight*; waiting on dependencies into *waiting for operands* and
+*load waiting on store*; and other into *waiting to schedule*, *schedule blocked* (no free
+physical registers), *waiting to issue*, *executing*, *load not issued* (to the L1D), *store
+pending*, and *waiting to complete* (it completes after retire this cycle and retires next).
+
 All three print ``CPU <n> <stage> CPI stack`` with the total slots, the width, the cycles, the
 instructions, and the CPI, then one line per category with its slots, its share of all slots,
-and its CPI contribution (its slots divided by the width and the instructions). The categories
+and its CPI contribution (its slots divided by the width and the instructions); each
+sub-category's line follows its category's line. The categories
 always add up to width × cycles slots, and their CPI contributions to the phase's CPI. The
 dispatch and issue stacks count correct-path instructions dispatched or issued, which can differ
 slightly from the number retired.

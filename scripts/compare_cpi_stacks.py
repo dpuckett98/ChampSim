@@ -2,8 +2,8 @@
 """
 Check how well the baseline (gc) CPI stacks predict the speedup of the idealized configs.
 
-For each (CPI-stack category, ideal config) pair - by default mis-speculating vs. gc_bp and load in flight vs.
-gc_l1d - and each trace:
+For each (CPI-stack category, ideal config) pair - by default mis-speculating vs. gc_bp and stalled waiting on cache
+vs. gc_l1d - and each trace:
 
     predicted = 100 * category CPI / total CPI        in the gc run's CPI stack (% of gc's cycles)
     actual    = 100 * (gc cycles - config cycles) / gc cycles
@@ -14,7 +14,10 @@ understates it. One panel per (category, stack, config), bars sorted from least 
 
 Usage:
     python3 compare_cpi_stacks.py RESULTS_DIR [-o fig/cpi_stack_vs_ideal.png] [--csv diffs.csv]
-                                  [--pair mis_speculating=gc_bp --pair load_in_flight=gc_l1d] [--baseline gc]
+                                  [--pair mis_speculating=gc_bp --pair waiting_on_cache=gc_l1d] [--baseline gc]
+
+A category can list alternatives separated by '|' (the first one present is used), e.g. the default
+'waiting_on_cache|load_in_flight' also reads results from before the stalled breakdown was changed.
 """
 
 import argparse
@@ -28,19 +31,23 @@ from parse_champsim_outputs import (CPI_STAGES, GRID_COLOR, TEXT_PRIMARY, TEXT_S
                                     parse_dir, short_trace_name)
 
 DEFAULT_NAME_REGEX = r"^(?P<trace>.+)\.cst_bin:(?P<config>\w+)$"
-DEFAULT_PAIRS = (("mis_speculating", "gc_bp"), ("load_in_flight", "gc_l1d"))
+DEFAULT_PAIRS = (("mis_speculating", "gc_bp"), ("waiting_on_cache|load_in_flight", "gc_l1d"))
 
 OVER_COLOR = "#e34948"   # stack predicts more than the ideal config removes
 UNDER_COLOR = "#2a78d6"  # stack predicts less
 
 
 def find_category(df, stage, category, cpu=0):
-    """The CPI-stack column name for category in stage ('load_in_flight' also matches 'stalled_load_in_flight')."""
+    """
+    The CPI-stack column name for category in stage ('waiting_on_cache' also matches 'stalled_waiting_on_cache');
+    category may list alternatives separated by '|', tried in order.
+    """
     prefix = f"cpu{cpu}.cpi_stack.{stage}."
-    for cat in (category, f"stalled_{category}"):
-        col = f"{prefix}{cat}.cpi"
-        if col in df.columns:
-            return cat, col
+    for alt in category.split("|"):
+        for cat in (alt, f"stalled_{alt}"):
+            col = f"{prefix}{cat}.cpi"
+            if col in df.columns and df[col].notna().any():
+                return cat, col
     return None, None
 
 
@@ -144,7 +151,7 @@ def main():
     ap.add_argument("--csv", help="also write the per-trace predicted/actual/diff table here")
     ap.add_argument("--pair", action="append", metavar="CATEGORY=CONFIG",
                     help="CPI-stack category and the ideal config that removes it (repeatable; "
-                         "default: mis_speculating=gc_bp load_in_flight=gc_l1d)")
+                         "default: mis_speculating=gc_bp 'waiting_on_cache|load_in_flight'=gc_l1d)")
     ap.add_argument("--baseline", default="gc", help="config whose CPI stacks are the prediction (default: gc)")
     ap.add_argument("--name-regex", default=DEFAULT_NAME_REGEX,
                     help="regex with 'trace' and 'config' groups for the file names (default: %(default)s)")
@@ -158,7 +165,7 @@ def main():
             pairs = [tuple(p.split("=", 1)) for p in args.pair]
             assert all(len(p) == 2 for p in pairs)
         except AssertionError:
-            sys.exit("--pair takes CATEGORY=CONFIG, e.g. --pair load_in_flight=gc_l1d")
+            sys.exit("--pair takes CATEGORY=CONFIG, e.g. --pair waiting_on_cache=gc_l1d")
 
     df = parse_dir(args.directory, glob=args.glob, name_regex=args.name_regex)
     if df.empty or not {"trace", "config"} <= set(df.columns):

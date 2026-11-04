@@ -10,6 +10,10 @@
 namespace
 {
 using stack = champsim::dispatch_cpi_stack;
+using state = champsim::rob_head_state;
+constexpr state nostate = state::NONE;
+constexpr auto cache = champsim::stall_cause::WAITING_ON_CACHE;
+constexpr auto other = champsim::stall_cause::OTHER;
 
 std::deque<ooo_model_instr> make_buffer(std::size_t n, bool wp = false)
 {
@@ -36,15 +40,6 @@ TEST_CASE("Unused dispatch slots whose head doesn't fit in the back end are stal
   REQUIRE(stack::classify_unused(make_buffer(2), sq, false) == stack::STALLED);
 }
 
-TEST_CASE("Stalled dispatch slots are charged to the first full structure in the order ROB, LQ, SQ") {
-  REQUIRE(stack::classify_stall(rob) == stack::ROB_FULL);
-  REQUIRE(stack::classify_stall(lq) == stack::LQ_FULL);
-  REQUIRE(stack::classify_stall(sq) == stack::SQ_FULL);
-  REQUIRE(stack::classify_stall({true, true, true}) == stack::ROB_FULL);
-  REQUIRE(stack::classify_stall({true, false, true}) == stack::ROB_FULL);
-  REQUIRE(stack::classify_stall({false, true, true}) == stack::LQ_FULL);
-}
-
 TEST_CASE("Unused dispatch slots with nothing ready are mis-speculating while recovering from a mispredict, and drained otherwise") {
   REQUIRE(stack::classify_unused(make_buffer(0), none, true) == stack::MIS_SPECULATING);
   REQUIRE(stack::classify_unused(make_buffer(2), none, true) == stack::MIS_SPECULATING);
@@ -60,24 +55,24 @@ TEST_CASE("The dispatch CPI stack counts slots and correct-path instructions and
   const auto empty = make_buffer(0);
 
   uut.begin_phase(true);
-  uut.dispatch_cycle(0, 0, 4, 2, 0, empty, none, false);
-  uut.dispatch_cycle(0, 0, 4, 0, 0, make_buffer(1), rob, false);
+  uut.dispatch_cycle(0, 0, 4, 2, 0, empty, none, false, nostate, other);
+  uut.dispatch_cycle(0, 0, 4, 0, 0, make_buffer(1), rob, false, state::LOAD_IN_FLIGHT, other);
   uut.end_phase(true);
   REQUIRE(out.str().empty());
 
   uut.begin_phase(false);
-  uut.dispatch_cycle(0, 1, 4, 4, 1, empty, none, false);                     // 3 dispatching, 1 mis-speculating
-  uut.dispatch_cycle(0, 2, 4, 2, 2, empty, none, false);                     // 2 mis-speculating, 2 drained
-  uut.dispatch_cycle(0, 3, 4, 0, 0, make_buffer(1), rob, false);             // 4 stalled, ROB full
-  uut.dispatch_cycle(0, 4, 4, 0, 0, make_buffer(1), {true, true, false}, false); // 4 stalled, ROB full
-  uut.dispatch_cycle(0, 5, 4, 0, 0, make_buffer(1), sq, false);              // 4 stalled, SQ full
-  uut.dispatch_cycle(0, 6, 4, 0, 0, make_buffer(1), lq, false);              // 4 stalled, LQ full
-  uut.dispatch_cycle(0, 7, 4, 1, 0, empty, rob, false);                      // 1 dispatching, 3 stalled, ROB full
-  uut.dispatch_cycle(0, 8, 4, 0, 0, empty, none, false);                     // 4 drained
+  uut.dispatch_cycle(0, 1, 4, 4, 1, empty, none, false, nostate, other);                                     // 3 dispatching, 1 mis-speculating
+  uut.dispatch_cycle(0, 2, 4, 2, 2, empty, none, false, nostate, cache);                                     // 2 mis-speculating, 2 drained on cache
+  uut.dispatch_cycle(0, 3, 4, 0, 0, make_buffer(1), rob, false, state::LOAD_IN_FLIGHT, cache);               // 4 stalled on cache
+  uut.dispatch_cycle(0, 4, 4, 0, 0, make_buffer(1), {true, true, false}, false, state::LOAD_IN_FLIGHT, other); // 4 stalled on cache
+  uut.dispatch_cycle(0, 5, 4, 0, 0, make_buffer(1), sq, false, state::LOAD_WAITING_ON_STORE, other);        // 4 stalled on dependencies
+  uut.dispatch_cycle(0, 6, 4, 0, 0, make_buffer(1), lq, false, state::EXECUTING, cache);                    // 4 stalled other
+  uut.dispatch_cycle(0, 7, 4, 1, 0, empty, rob, false, state::WAITING_TO_COMPLETE, other);                  // 1 dispatching, 3 stalled other
+  uut.dispatch_cycle(0, 8, 4, 0, 0, empty, none, false, state::LOAD_IN_FLIGHT, other);                      // 4 drained other
   uut.end_phase(false);
 
   REQUIRE(uut.per_cpu.at(0).slots == std::array<uint64_t, stack::NUM_CATEGORIES>{4, 3, 19, 6});
-  REQUIRE(uut.per_cpu.at(0).sub_slots == std::array<uint64_t, stack::NUM_SUBCATEGORIES>{11, 4, 4});
+  REQUIRE(uut.per_cpu.at(0).sub_slots == std::array<uint64_t, stack::NUM_SUBCATEGORIES>{8, 4, 7, 2, 4});
   REQUIRE(uut.per_cpu.at(0).cycles == 8);
   REQUIRE(uut.per_cpu.at(0).instrs == 4);
 
@@ -85,18 +80,20 @@ TEST_CASE("The dispatch CPI stack counts slots and correct-path instructions and
                                "CPU 0 dispatch dispatching: slots: 4 (12.5%) CPI: 0.25\n"
                                "CPU 0 dispatch mis-speculating: slots: 3 (9.375%) CPI: 0.1875\n"
                                "CPU 0 dispatch stalled: slots: 19 (59.38%) CPI: 1.188\n"
-                               "CPU 0 dispatch stalled ROB full: slots: 11 (34.38%) CPI: 0.6875\n"
-                               "CPU 0 dispatch stalled LQ full: slots: 4 (12.5%) CPI: 0.25\n"
-                               "CPU 0 dispatch stalled SQ full: slots: 4 (12.5%) CPI: 0.25\n"
-                               "CPU 0 dispatch drained: slots: 6 (18.75%) CPI: 0.375\n";
+                               "CPU 0 dispatch stalled waiting on cache: slots: 8 (25%) CPI: 0.5\n"
+                               "CPU 0 dispatch stalled waiting on dependencies: slots: 4 (12.5%) CPI: 0.25\n"
+                               "CPU 0 dispatch stalled other: slots: 7 (21.88%) CPI: 0.4375\n"
+                               "CPU 0 dispatch drained: slots: 6 (18.75%) CPI: 0.375\n"
+                               "CPU 0 dispatch drained waiting on cache: slots: 2 (6.25%) CPI: 0.125\n"
+                               "CPU 0 dispatch drained other: slots: 4 (12.5%) CPI: 0.25\n";
   REQUIRE(out.str() == expected);
 
   // Counts, including the breakdown, reset at the start of the next phase
   out.str("");
   uut.begin_phase(false);
-  uut.dispatch_cycle(0, 9, 4, 0, 0, make_buffer(1), sq, false);
+  uut.dispatch_cycle(0, 9, 4, 0, 0, make_buffer(1), sq, false, state::EXECUTING, other);
   uut.end_phase(false);
-  REQUIRE(uut.per_cpu.at(0).sub_slots == std::array<uint64_t, stack::NUM_SUBCATEGORIES>{0, 0, 4});
+  REQUIRE(uut.per_cpu.at(0).sub_slots == std::array<uint64_t, stack::NUM_SUBCATEGORIES>{0, 0, 4, 0, 0});
 }
 
 struct empty_env : champsim::modules::environment_module {

@@ -41,6 +41,13 @@ public:
       return false;
     return physical_register_file[physreg].valid;
   }
+  // The instr. that last renamed physreg as its destination (0 for an invalid register or one never written in the simulation)
+  uint64_t producer_of(PHYSICAL_REGISTER_ID physreg) const
+  {
+    if (physreg < 0 || static_cast<size_t>(physreg) >= physical_register_file.size())
+      return 0;
+    return physical_register_file[physreg].producing_instruction_id;
+  }
   bool isAllocated(PHYSICAL_REGISTER_ID archreg, bool wrong_path = false) const
   {
     return (wrong_path ? wrong_path_RAT[archreg] : correct_path_RAT[archreg]) != -1;

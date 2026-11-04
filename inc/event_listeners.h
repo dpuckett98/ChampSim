@@ -39,24 +39,28 @@ inline void end_phase(bool is_warmup)
 }
 
 inline void retire_cycle(uint32_t cpu, uint64_t cycle, std::size_t width, std::size_t num_retired, const std::deque<ooo_model_instr>& rob,
-                         bool recovering_from_mispredict, champsim::rob_head_state head_state)
+                         bool recovering_from_mispredict, champsim::rob_head_state head_state, champsim::stall_cause fetch_cause)
 {
   for (auto* listener : active())
-    listener->retire_cycle(cpu, cycle, width, num_retired, rob, recovering_from_mispredict, head_state);
+    listener->retire_cycle(cpu, cycle, width, num_retired, rob, recovering_from_mispredict, head_state, fetch_cause);
 }
 
 inline void dispatch_cycle(uint32_t cpu, uint64_t cycle, std::size_t width, std::size_t num_dispatched, std::size_t num_wp_dispatched,
-                           const std::deque<ooo_model_instr>& dispatch_buffer, champsim::backend_stall backend_stall, bool recovering_from_mispredict)
+                           const std::deque<ooo_model_instr>& dispatch_buffer, champsim::backend_stall backend_stall, bool recovering_from_mispredict,
+                           champsim::rob_head_state head_state, champsim::stall_cause fetch_cause)
 {
   for (auto* listener : active())
-    listener->dispatch_cycle(cpu, cycle, width, num_dispatched, num_wp_dispatched, dispatch_buffer, backend_stall, recovering_from_mispredict);
+    listener->dispatch_cycle(cpu, cycle, width, num_dispatched, num_wp_dispatched, dispatch_buffer, backend_stall, recovering_from_mispredict, head_state,
+                             fetch_cause);
 }
 
 inline void issue_cycle(uint32_t cpu, uint64_t cycle, std::size_t width, std::size_t num_issued, std::size_t num_wp_issued, const std::deque<ooo_model_instr>& rob,
-                        bool backend_full, bool recovering_from_mispredict)
+                        bool backend_full, bool recovering_from_mispredict, champsim::rob_head_state head_state, champsim::stall_cause oldest_unissued_cause,
+                        champsim::stall_cause fetch_cause)
 {
   for (auto* listener : active())
-    listener->issue_cycle(cpu, cycle, width, num_issued, num_wp_issued, rob, backend_full, recovering_from_mispredict);
+    listener->issue_cycle(cpu, cycle, width, num_issued, num_wp_issued, rob, backend_full, recovering_from_mispredict, head_state, oldest_unissued_cause,
+                          fetch_cause);
 }
 
 inline void retire(uint32_t cpu, std::deque<ooo_model_instr>::const_iterator begin, std::deque<ooo_model_instr>::const_iterator end, uint64_t cycle)

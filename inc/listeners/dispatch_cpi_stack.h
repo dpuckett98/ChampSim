@@ -1,7 +1,6 @@
 #ifndef DISPATCH_CPI_STACK_H
 #define DISPATCH_CPI_STACK_H
 
-#include <array>
 #include <cstdint>
 #include <deque>
 
@@ -9,6 +8,7 @@
 #include "instruction.h"
 #include "listeners/cpi_stack.h"
 #include "modules.h"
+#include "rob_head_state.h"
 
 namespace champsim
 {
@@ -21,25 +21,20 @@ namespace champsim
  *   instruction has been dispatched since the flush);
  * - drained: the front end had no instruction ready to dispatch.
  *
- * Stalled slots are further broken down by the structure that blocked the head, and each cycle's are charged to exactly one, so the three sum to the stalled
- * count. When several are full at once the slots go to the first full one in the order ROB, LQ, SQ:
- * - ROB full: the ROB has no free entry;
- * - LQ full: the ROB has room, but the LQ has too few free entries for the head's loads;
- * - SQ full: the ROB and LQ have room, but the SQ has too few free entries for the head's stores.
+ * Stalled slots are further broken down by the ROB head, whose retirement would free room in the back end (see champsim::stall_cause_of): waiting on
+ * cache (its load is in flight in the L1D), waiting on dependencies (it waits for an operand, or its load waits for an older store to forward its data), or
+ * other. Drained slots are broken down by the front end: waiting on cache when the oldest instruction in the front end is waiting for its block from the L1I,
+ * and other otherwise.
  *
- * Counts reset at the start of each phase and are printed for each core at the end of every non-warmup phase, with the breakdown lines right after the
- * stalled line. The instruction count is the number of correct-path instructions dispatched.
+ * Counts reset at the start of each phase and are printed for each core at the end of every non-warmup phase. The instruction count is the number of
+ * correct-path instructions dispatched.
  *
  * Model name: ``DISPATCH_CPI_STACK``. No parameters.
  */
-class dispatch_cpi_stack : public cpi_stack<4, 3>
+class dispatch_cpi_stack : public cpi_stack<>
 {
 public:
-  enum category : std::size_t { DISPATCHING, MIS_SPECULATING, STALLED, DRAINED };
-  static constexpr std::array<const char*, NUM_CATEGORIES> category_names{"dispatching", "mis-speculating", "stalled", "drained"};
-
-  enum stall_reason : std::size_t { ROB_FULL, LQ_FULL, SQ_FULL };
-  static constexpr std::array<const char*, NUM_SUBCATEGORIES> stall_reason_names{"stalled ROB full", "stalled LQ full", "stalled SQ full"};
+  static constexpr category DISPATCHING = USEFUL;
 
   explicit dispatch_cpi_stack(champsim::modules::ModuleBuilder builder);
 
@@ -47,11 +42,9 @@ public:
   [[nodiscard]] static category classify_unused(const std::deque<ooo_model_instr>& dispatch_buffer, champsim::backend_stall backend_stall,
                                                 bool recovering_from_mispredict);
 
-  // The structure stalled slots are charged to; backend_stall must have at least one structure full
-  [[nodiscard]] static stall_reason classify_stall(champsim::backend_stall backend_stall);
-
   void dispatch_cycle(uint32_t cpu, uint64_t cycle, std::size_t width, std::size_t num_dispatched, std::size_t num_wp_dispatched,
-                      const std::deque<ooo_model_instr>& dispatch_buffer, champsim::backend_stall backend_stall, bool recovering_from_mispredict) override;
+                      const std::deque<ooo_model_instr>& dispatch_buffer, champsim::backend_stall backend_stall, bool recovering_from_mispredict,
+                      champsim::rob_head_state head_state, champsim::stall_cause fetch_cause) override;
 };
 } // namespace champsim
 

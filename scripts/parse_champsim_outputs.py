@@ -528,8 +528,8 @@ USEFUL_CATEGORIES = {"retiring", "dispatching", "issuing"}
 FAMILY_COLORS = {
     "useful": "#2a78d6",
     "mis_speculating": "#eb6834",
-    "stalled": ("#6250d6", "#9085e9"),  # alternated so neighbouring stall reasons stay distinct
-    "drained": "#a3a29c",
+    "stalled": ("#6250d6", "#9085e9"),  # alternated so neighbouring sub-categories stay distinct
+    "drained": ("#a3a29c", "#c8c7c1"),
 }
 FAMILY_LABELS = {"useful": "useful work", "mis_speculating": "mis-speculating", "stalled": "stalled", "drained": "drained"}
 
@@ -538,8 +538,9 @@ def cpi_stack(row, stage, cpu=0, min_pct=2.0):
     """
     The leaf categories of one CPI stack as [(label, family, cpi), ...] in the order ChampSim prints them.
 
-    A category with sub-categories (e.g. 'stalled' -> 'stalled_load_in_flight', ...) is replaced by them.
-    Sub-categories under min_pct of the stack's total CPI are summed into one 'other stalls' segment.
+    A category with sub-categories (e.g. 'stalled' -> 'stalled_waiting_on_cache', ...) is replaced by them, at any depth
+    (retire's 'stalled_other' -> 'stalled_other_executing', ...), labelled with their parents' names. Leaves under min_pct
+    of the stack's total CPI are summed into one 'rest of <parent>' segment.
     """
     prefix = f"cpu{cpu}.cpi_stack.{stage}."
     cats = [c[len(prefix):-len(".cpi")] for c in row.index
@@ -551,23 +552,39 @@ def cpi_stack(row, stage, cpu=0, min_pct=2.0):
             return "useful"
         return next((f for f in ("mis_speculating", "stalled", "drained") if cat == f or cat.startswith(f + "_")), "stalled")
 
-    segments, folded = [], {}
+    def parent_of(cat):
+        # the deepest category cat is nested under (names nest by prefix: stalled > stalled_other > stalled_other_executing)
+        return max((p for p in cats if cat.startswith(p + "_")), key=len, default=None)
+
+    def label_of(cat):
+        parent = parent_of(cat)
+        if parent is None:
+            return cat.replace("_", " ")
+        if parent_of(parent) is None:
+            return cat.replace("_", " ")  # 'stalled waiting on cache', 'drained other', ...
+        return f"{label_of(parent)} \u2013 {cat[len(parent) + 1:].replace('_', ' ')}"  # 'stalled other – executing'
+
+    def pretty(label):
+        return label.replace("mis speculating", "mis-speculating").replace("rob", "ROB").replace("lq", "LQ").replace("sq", "SQ")
+
+    leaves, folded = [], {}
     for cat in cats:
-        children = [c for c in cats if c.startswith(cat + "_")]
-        if children:
+        if any(c.startswith(cat + "_") for c in cats):
             continue  # drawn as its children
         cpi = float(row[f"{prefix}{cat}.cpi"])
-        parent = next((p for p in cats if cat.startswith(p + "_")), None)
+        parent = parent_of(cat)
         if parent and total > 0 and 100 * cpi / total < min_pct:
             folded[parent] = folded.get(parent, 0.0) + cpi
             continue
-        label = cat[len(parent) + 1:] if parent else cat
-        segments.append((label.replace("mis_speculating", "mis-speculating").replace("_", " ").replace("rob", "ROB").replace("lq", "LQ").replace("sq", "SQ"),
-                         family(cat), cpi))
+        leaves.append((cat, pretty(label_of(cat)), family(cat), cpi))
     for parent, cpi in folded.items():
+        if cpi <= 0:
+            continue
         # put the folded remainder right after its siblings
-        idx = max((i for i, s in enumerate(segments) if s[1] == family(parent)), default=len(segments) - 1) + 1
-        segments.insert(idx, (f"other {parent.replace('_', ' ')}", family(parent), cpi))
+        idx = max((i for i, l in enumerate(leaves) if l[0].startswith(parent + "_")),
+                  default=max((i for i, l in enumerate(leaves) if l[2] == family(parent)), default=len(leaves) - 1)) + 1
+        leaves.insert(idx, (parent, pretty(f"rest of {label_of(parent)}"), family(parent), cpi))
+    segments = [(label, fam, cpi) for _, label, fam, cpi in leaves]
     return segments, total
 
 
@@ -608,18 +625,18 @@ def _cpi_runs(df, config, trace_col, config_col):
 CPU_FOR_STACKS = (0, 2.0)  # (cpu, min_pct), set by the plotting functions before _cpi_runs
 
 
-def _draw_cpi_stacks(ax, stacks, top, min_pct, fontsize=8, label_gap=0.045, spacing=2.2, label_room=1.9):
+def _draw_cpi_stacks(ax, stacks, top, min_pct, fontsize=8, label_gap=0.045, spacing=2.7, label_room=2.4):
     """Draw the stacks of one trace onto ax, with direct labels to the right of each bar."""
     width = 0.55
     gap = label_gap * top  # label spacing, in data units
     for i, (stage, (segs, total)) in enumerate(stacks.items()):
         x, bottom, labels = i * spacing, 0.0, []
-        stall_idx = 0
+        shade = {}
         for label, fam, cpi in segs:
             color = FAMILY_COLORS[fam]
-            if fam == "stalled":
-                color = color[stall_idx % 2]
-                stall_idx += 1
+            if isinstance(color, tuple):
+                color = color[shade.get(fam, 0) % 2]
+                shade[fam] = shade.get(fam, 0) + 1
             ax.bar(x, cpi, width, bottom=bottom, color=color, edgecolor="white", linewidth=1.2, zorder=2)
             if total > 0 and 100 * cpi / total >= min_pct:
                 labels.append((bottom + cpi / 2, f"{label}  {cpi:.3f} ({100 * cpi / total:.0f}%)"))
@@ -647,7 +664,7 @@ def _cpi_legend(fig, all_stacks, fontsize=8):
     from matplotlib.patches import Patch
 
     families = {f for stacks in all_stacks for segs, _ in stacks.values() for _, f, _ in segs}
-    handles = [Patch(color=FAMILY_COLORS[f][0] if f == "stalled" else FAMILY_COLORS[f], label=FAMILY_LABELS[f])
+    handles = [Patch(color=FAMILY_COLORS[f][0] if isinstance(FAMILY_COLORS[f], tuple) else FAMILY_COLORS[f], label=FAMILY_LABELS[f])
                for f in FAMILY_LABELS if f in families]
     fig.legend(handles=handles, loc="outside upper right", ncols=len(handles), frameon=False, fontsize=fontsize)
 
@@ -678,7 +695,7 @@ def plot_cpi_stacks(df, config="gc", out_dir=None, cpu=0, min_pct=2.0, trace_col
     CPU_FOR_STACKS = (cpu, min_pct)
     figs = {}
     for trace, stacks in _cpi_runs(df, config, trace_col, config_col):
-        fig, ax = plt.subplots(figsize=(9, 5.5), layout="constrained")
+        fig, ax = plt.subplots(figsize=(10, 5.5), layout="constrained")
         _draw_cpi_stacks(ax, stacks, _stack_top(stacks), min_pct)
         ax.set_ylabel("CPI", fontsize=9, color=TEXT_SECONDARY)
         ax.set_title(_stack_title(trace, config, stacks), fontsize=11, color=TEXT_PRIMARY, loc="left")
@@ -709,11 +726,11 @@ def plot_cpi_stack_summary(df, config="gc", output=None, cpu=0, min_pct=2.0, nco
     shared_top = max(_stack_top(stacks) for _, stacks in runs)
 
     nrows = math.ceil(len(runs) / ncols)
-    fig, axes = plt.subplots(nrows, ncols, figsize=(6.8 * ncols, 4.4 * nrows), sharey=sharey,
+    fig, axes = plt.subplots(nrows, ncols, figsize=(7.6 * ncols, 4.4 * nrows), sharey=sharey,
                              layout="constrained", squeeze=False)
     for ax, (trace, stacks) in zip(axes.flat, runs):
         top = shared_top if sharey else _stack_top(stacks)
-        _draw_cpi_stacks(ax, stacks, top, min_pct, fontsize=6.5, label_gap=0.05, spacing=3.0, label_room=2.6)
+        _draw_cpi_stacks(ax, stacks, top, min_pct, fontsize=6.5, label_gap=0.05, spacing=3.5, label_room=3.0)
         ax.set_title(_stack_title(trace, None, stacks), fontsize=10, color=TEXT_PRIMARY, loc="left")
         if sharey:
             ax.yaxis.set_tick_params(labelleft=True)
