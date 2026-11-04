@@ -13,15 +13,16 @@
 namespace champsim
 {
 /**
- * Listener that builds a top-level CPI stack at the dispatch stage (dispatch buffer -> ROB). Every core cycle is put in exactly one category:
- * - dispatching: at least one correct-path instruction was dispatched;
- * - mis-speculating: only wrong-path instructions were dispatched, or nothing was dispatched (and the back end isn't full) and either the oldest waiting
- *   instruction is on the wrong path or the core is recovering from a misprediction (no correct-path instruction has been dispatched since the flush);
- * - stalled: nothing was dispatched because the oldest waiting instruction (on either path) doesn't fit in the ROB, LQ, or SQ;
- * - drained: nothing was dispatched because the front end had no instruction ready to dispatch.
+ * Listener that builds a top-level CPI stack at the dispatch stage (dispatch buffer -> ROB), in slots: each cycle has dispatch-width slots (see
+ * champsim::cpi_stack). Each slot that dispatched a correct-path instruction is dispatching, and each that dispatched a wrong-path instruction is
+ * mis-speculating. The unused slots of a cycle all go to one category, decided by the oldest instruction still waiting to dispatch:
+ * - stalled: it (on either path) doesn't fit in the ROB, LQ, or SQ;
+ * - mis-speculating: it fits but is on the wrong path, or nothing is ready to dispatch while the core is recovering from a misprediction (no correct-path
+ *   instruction has been dispatched since the flush);
+ * - drained: the front end had no instruction ready to dispatch.
  *
- * Stalled cycles are further broken down by the structure that blocked the head, and each is charged to exactly one, so the three sum to the stalled count.
- * When several are full at once the cycle goes to the first full one in the order ROB, LQ, SQ:
+ * Stalled slots are further broken down by the structure that blocked the head, and each cycle's are charged to exactly one, so the three sum to the stalled
+ * count. When several are full at once the slots go to the first full one in the order ROB, LQ, SQ:
  * - ROB full: the ROB has no free entry;
  * - LQ full: the ROB has room, but the LQ has too few free entries for the head's loads;
  * - SQ full: the ROB and LQ have room, but the SQ has too few free entries for the head's stores.
@@ -42,15 +43,15 @@ public:
 
   explicit dispatch_cpi_stack(champsim::modules::ModuleBuilder builder);
 
-  // The category a dispatch-stage cycle belongs to
-  [[nodiscard]] static category classify(std::size_t num_dispatched, std::size_t num_wp_dispatched, const std::deque<ooo_model_instr>& dispatch_buffer,
-                                         champsim::backend_stall backend_stall, bool recovering_from_mispredict);
+  // The category of a dispatch-stage cycle's unused slots, given the dispatch buffer after dispatch
+  [[nodiscard]] static category classify_unused(const std::deque<ooo_model_instr>& dispatch_buffer, champsim::backend_stall backend_stall,
+                                                bool recovering_from_mispredict);
 
-  // The structure a stalled cycle is charged to; backend_stall must have at least one structure full
+  // The structure stalled slots are charged to; backend_stall must have at least one structure full
   [[nodiscard]] static stall_reason classify_stall(champsim::backend_stall backend_stall);
 
-  void dispatch_cycle(uint32_t cpu, uint64_t cycle, std::size_t num_dispatched, std::size_t num_wp_dispatched, const std::deque<ooo_model_instr>& dispatch_buffer,
-                      champsim::backend_stall backend_stall, bool recovering_from_mispredict) override;
+  void dispatch_cycle(uint32_t cpu, uint64_t cycle, std::size_t width, std::size_t num_dispatched, std::size_t num_wp_dispatched,
+                      const std::deque<ooo_model_instr>& dispatch_buffer, champsim::backend_stall backend_stall, bool recovering_from_mispredict) override;
 };
 } // namespace champsim
 

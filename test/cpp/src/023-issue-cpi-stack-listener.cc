@@ -22,56 +22,48 @@ std::deque<ooo_model_instr> make_rob(std::size_t num_executed, std::size_t num_c
   return rob;
 }
 
-TEST_CASE("An issue cycle that issues a correct-path instruction is issuing") {
-  REQUIRE(stack::classify(1, 0, make_rob(4, 0, 0), false, false) == stack::ISSUING);
-  REQUIRE(stack::classify(3, 2, make_rob(4, 0, 2), true, true) == stack::ISSUING);
+TEST_CASE("Unused issue slots with a correct-path instruction waiting to issue are stalled") {
+  REQUIRE(stack::classify_unused(make_rob(2, 1, 0), false, false) == stack::STALLED);
+  REQUIRE(stack::classify_unused(make_rob(2, 1, 3), false, true) == stack::STALLED);
 }
 
-TEST_CASE("An issue cycle that issues only wrong-path instructions is mis-speculating") {
-  REQUIRE(stack::classify(2, 2, make_rob(4, 2, 2), false, false) == stack::MIS_SPECULATING);
+TEST_CASE("Unused issue slots with only wrong-path instructions waiting to issue are mis-speculating") {
+  REQUIRE(stack::classify_unused(make_rob(2, 0, 3), true, false) == stack::MIS_SPECULATING);
 }
 
-TEST_CASE("An idle issue cycle with a correct-path instruction waiting to issue is stalled") {
-  REQUIRE(stack::classify(0, 0, make_rob(2, 1, 0), false, false) == stack::STALLED);
-  REQUIRE(stack::classify(0, 0, make_rob(2, 1, 3), false, true) == stack::STALLED);
+TEST_CASE("Unused issue slots with nothing waiting to issue are mis-speculating while recovering, stalled with a full back end, and drained otherwise") {
+  REQUIRE(stack::classify_unused(make_rob(0, 0, 0), false, true) == stack::MIS_SPECULATING);
+  REQUIRE(stack::classify_unused(make_rob(3, 0, 0), true, false) == stack::STALLED);
+  REQUIRE(stack::classify_unused(make_rob(3, 0, 0), false, false) == stack::DRAINED);
+  REQUIRE(stack::classify_unused(make_rob(0, 0, 0), false, false) == stack::DRAINED);
 }
 
-TEST_CASE("An idle issue cycle with only wrong-path instructions waiting to issue is mis-speculating") {
-  REQUIRE(stack::classify(0, 0, make_rob(2, 0, 3), true, false) == stack::MIS_SPECULATING);
-}
-
-TEST_CASE("An idle issue cycle with nothing waiting to issue is mis-speculating while recovering, stalled with a full back end, and drained otherwise") {
-  REQUIRE(stack::classify(0, 0, make_rob(0, 0, 0), false, true) == stack::MIS_SPECULATING);
-  REQUIRE(stack::classify(0, 0, make_rob(3, 0, 0), true, false) == stack::STALLED);
-  REQUIRE(stack::classify(0, 0, make_rob(3, 0, 0), false, false) == stack::DRAINED);
-  REQUIRE(stack::classify(0, 0, make_rob(0, 0, 0), false, false) == stack::DRAINED);
-}
-
-TEST_CASE("The issue CPI stack counts cycles and correct-path instructions and prints them at the end of a non-warmup phase") {
+TEST_CASE("The issue CPI stack counts slots and correct-path instructions and prints them at the end of a non-warmup phase") {
   std::ostringstream out;
   stack uut{champsim::modules::ModuleBuilder("test_cpi_stack", "ISSUE_CPI_STACK")};
   uut.std_out = &out;
 
   uut.begin_phase(true);
-  uut.issue_cycle(0, 0, 2, 0, make_rob(2, 0, 0), false, false);
+  uut.issue_cycle(0, 0, 4, 2, 0, make_rob(2, 0, 0), false, false);
   uut.end_phase(true);
   REQUIRE(out.str().empty());
 
   uut.begin_phase(false);
-  uut.issue_cycle(0, 1, 3, 1, make_rob(3, 0, 0), false, false); // issuing, 2 correct-path instrs.
-  uut.issue_cycle(0, 2, 0, 0, make_rob(1, 1, 0), false, false); // stalled
-  uut.issue_cycle(0, 3, 0, 0, make_rob(0, 0, 0), false, false); // drained
-  uut.issue_cycle(0, 4, 0, 0, make_rob(0, 0, 0), false, false); // drained
+  uut.issue_cycle(0, 1, 4, 3, 1, make_rob(3, 0, 0), false, false); // 2 issuing, 1 mis-speculating, 1 drained
+  uut.issue_cycle(0, 2, 4, 0, 0, make_rob(1, 1, 0), false, false); // 4 stalled
+  uut.issue_cycle(0, 3, 4, 0, 0, make_rob(0, 0, 0), false, false); // 4 drained
+  uut.issue_cycle(0, 4, 4, 0, 0, make_rob(0, 0, 0), false, false); // 4 drained
   uut.end_phase(false);
 
-  REQUIRE(uut.per_cpu.at(0).cycles == std::array<uint64_t, stack::NUM_CATEGORIES>{1, 0, 1, 2});
+  REQUIRE(uut.per_cpu.at(0).slots == std::array<uint64_t, stack::NUM_CATEGORIES>{2, 1, 4, 9});
+  REQUIRE(uut.per_cpu.at(0).cycles == 4);
   REQUIRE(uut.per_cpu.at(0).instrs == 2);
 
-  const std::string expected = "CPU 0 issue CPI stack: cycles: 4 instructions: 2 CPI: 2\n"
-                               "CPU 0 issue issuing: cycles: 1 (25%) CPI: 0.5\n"
-                               "CPU 0 issue mis-speculating: cycles: 0 (0%) CPI: 0\n"
-                               "CPU 0 issue stalled: cycles: 1 (25%) CPI: 0.5\n"
-                               "CPU 0 issue drained: cycles: 2 (50%) CPI: 1\n";
+  const std::string expected = "CPU 0 issue CPI stack: slots: 16 (width 4) cycles: 4 instructions: 2 CPI: 2\n"
+                               "CPU 0 issue issuing: slots: 2 (12.5%) CPI: 0.25\n"
+                               "CPU 0 issue mis-speculating: slots: 1 (6.25%) CPI: 0.125\n"
+                               "CPU 0 issue stalled: slots: 4 (25%) CPI: 0.5\n"
+                               "CPU 0 issue drained: slots: 9 (56.25%) CPI: 1.125\n";
   REQUIRE(out.str() == expected);
 }
 

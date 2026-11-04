@@ -38,25 +38,25 @@ inline void end_phase(bool is_warmup)
     listener->end_phase(is_warmup);
 }
 
-inline void retire_cycle(uint32_t cpu, uint64_t cycle, std::size_t num_retired, const std::deque<ooo_model_instr>& rob, bool recovering_from_mispredict,
-                         champsim::rob_head_state head_state)
+inline void retire_cycle(uint32_t cpu, uint64_t cycle, std::size_t width, std::size_t num_retired, const std::deque<ooo_model_instr>& rob,
+                         bool recovering_from_mispredict, champsim::rob_head_state head_state)
 {
   for (auto* listener : active())
-    listener->retire_cycle(cpu, cycle, num_retired, rob, recovering_from_mispredict, head_state);
+    listener->retire_cycle(cpu, cycle, width, num_retired, rob, recovering_from_mispredict, head_state);
 }
 
-inline void dispatch_cycle(uint32_t cpu, uint64_t cycle, std::size_t num_dispatched, std::size_t num_wp_dispatched, const std::deque<ooo_model_instr>& dispatch_buffer,
-                           champsim::backend_stall backend_stall, bool recovering_from_mispredict)
+inline void dispatch_cycle(uint32_t cpu, uint64_t cycle, std::size_t width, std::size_t num_dispatched, std::size_t num_wp_dispatched,
+                           const std::deque<ooo_model_instr>& dispatch_buffer, champsim::backend_stall backend_stall, bool recovering_from_mispredict)
 {
   for (auto* listener : active())
-    listener->dispatch_cycle(cpu, cycle, num_dispatched, num_wp_dispatched, dispatch_buffer, backend_stall, recovering_from_mispredict);
+    listener->dispatch_cycle(cpu, cycle, width, num_dispatched, num_wp_dispatched, dispatch_buffer, backend_stall, recovering_from_mispredict);
 }
 
-inline void issue_cycle(uint32_t cpu, uint64_t cycle, std::size_t num_issued, std::size_t num_wp_issued, const std::deque<ooo_model_instr>& rob, bool backend_full,
-                        bool recovering_from_mispredict)
+inline void issue_cycle(uint32_t cpu, uint64_t cycle, std::size_t width, std::size_t num_issued, std::size_t num_wp_issued, const std::deque<ooo_model_instr>& rob,
+                        bool backend_full, bool recovering_from_mispredict)
 {
   for (auto* listener : active())
-    listener->issue_cycle(cpu, cycle, num_issued, num_wp_issued, rob, backend_full, recovering_from_mispredict);
+    listener->issue_cycle(cpu, cycle, width, num_issued, num_wp_issued, rob, backend_full, recovering_from_mispredict);
 }
 
 inline void retire(uint32_t cpu, std::deque<ooo_model_instr>::const_iterator begin, std::deque<ooo_model_instr>::const_iterator end, uint64_t cycle)

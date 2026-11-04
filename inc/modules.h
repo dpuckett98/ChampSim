@@ -1176,28 +1176,32 @@ struct module_base {
     {
     }
 
-    // Called every core cycle at the retire stage, with the ROB as it stands at the start of the cycle (the num_retired retiring entries are at its head).
-    // recovering_from_mispredict is true from a misprediction flush until the next correct-path instruction is dispatched into the ROB. head_state says where
-    // the ROB head is in its lifecycle when it hasn't completed (NONE when the ROB is empty or the head has completed).
-    virtual void retire_cycle([[maybe_unused]] uint32_t cpu, [[maybe_unused]] uint64_t cycle, [[maybe_unused]] std::size_t num_retired,
-                              [[maybe_unused]] const std::deque<ooo_model_instr>& rob, [[maybe_unused]] bool recovering_from_mispredict,
-                              [[maybe_unused]] champsim::rob_head_state head_state)
+    // Called every core cycle at the retire stage, after retirement: num_retired instrs. retired out of the stage's width slots (the retire width), and rob is
+    // the ROB afterward, so its head is the oldest instr. that didn't retire. recovering_from_mispredict is true from a misprediction flush until the next
+    // correct-path instruction is dispatched into the ROB. head_state says where that head is in its lifecycle when it hasn't completed (NONE when the ROB is
+    // empty or the head has completed).
+    virtual void retire_cycle([[maybe_unused]] uint32_t cpu, [[maybe_unused]] uint64_t cycle, [[maybe_unused]] std::size_t width,
+                              [[maybe_unused]] std::size_t num_retired, [[maybe_unused]] const std::deque<ooo_model_instr>& rob,
+                              [[maybe_unused]] bool recovering_from_mispredict, [[maybe_unused]] champsim::rob_head_state head_state)
     {
     }
 
-    // Called every core cycle at the dispatch stage, after dispatch. num_dispatched instrs. (num_wp_dispatched of them wrong-path) moved into the ROB, and
-    // dispatch_buffer holds what remains, so when nothing was dispatched its head is the oldest instr. waiting to dispatch. backend_stall says which of the
-    // ROB, LQ, and SQ that head doesn't fit in (none when the dispatch buffer is empty).
-    virtual void dispatch_cycle([[maybe_unused]] uint32_t cpu, [[maybe_unused]] uint64_t cycle, [[maybe_unused]] std::size_t num_dispatched,
-                                [[maybe_unused]] std::size_t num_wp_dispatched, [[maybe_unused]] const std::deque<ooo_model_instr>& dispatch_buffer,
-                                [[maybe_unused]] champsim::backend_stall backend_stall, [[maybe_unused]] bool recovering_from_mispredict)
+    // Called every core cycle at the dispatch stage, after dispatch. num_dispatched instrs. (num_wp_dispatched of them wrong-path) moved into the ROB out of
+    // the stage's width slots (the dispatch width), and dispatch_buffer holds what remains, so its head is the oldest instr. waiting to dispatch.
+    // backend_stall says which of the ROB, LQ, and SQ that head doesn't fit in (none when the dispatch buffer is empty).
+    virtual void dispatch_cycle([[maybe_unused]] uint32_t cpu, [[maybe_unused]] uint64_t cycle, [[maybe_unused]] std::size_t width,
+                                [[maybe_unused]] std::size_t num_dispatched, [[maybe_unused]] std::size_t num_wp_dispatched,
+                                [[maybe_unused]] const std::deque<ooo_model_instr>& dispatch_buffer, [[maybe_unused]] champsim::backend_stall backend_stall,
+                                [[maybe_unused]] bool recovering_from_mispredict)
     {
     }
 
-    // Called every core cycle at the issue (execute) stage, after issue. num_issued instrs. (num_wp_issued of them wrong-path) were sent to execute, and rob is
-    // the ROB afterward. backend_full is true when the oldest instr. waiting to dispatch doesn't fit in the ROB, LQ, or SQ.
-    virtual void issue_cycle([[maybe_unused]] uint32_t cpu, [[maybe_unused]] uint64_t cycle, [[maybe_unused]] std::size_t num_issued,
-                             [[maybe_unused]] std::size_t num_wp_issued, [[maybe_unused]] const std::deque<ooo_model_instr>& rob, [[maybe_unused]] bool backend_full,
+    // Called every core cycle at the issue (execute) stage, after issue. num_issued instrs. (num_wp_issued of them wrong-path) were sent to execute out of the
+    // stage's width slots (the execute width), and rob is the ROB afterward. backend_full is true when the oldest instr. waiting to dispatch doesn't fit in the
+    // ROB, LQ, or SQ.
+    virtual void issue_cycle([[maybe_unused]] uint32_t cpu, [[maybe_unused]] uint64_t cycle, [[maybe_unused]] std::size_t width,
+                             [[maybe_unused]] std::size_t num_issued, [[maybe_unused]] std::size_t num_wp_issued,
+                             [[maybe_unused]] const std::deque<ooo_model_instr>& rob, [[maybe_unused]] bool backend_full,
                              [[maybe_unused]] bool recovering_from_mispredict)
     {
     }

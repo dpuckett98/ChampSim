@@ -747,7 +747,8 @@ long O3_CPU::dispatch_instruction()
   }
 
   ::count_in_histogram(sim_stats.dispatch_width_histogram, static_cast<std::size_t>(available_dispatch_bandwidth.amount_consumed()));
-  champsim::listeners::dispatch_cycle(cpu, current_time.time_since_epoch() / clock_period, static_cast<std::size_t>(available_dispatch_bandwidth.amount_consumed()),
+  champsim::listeners::dispatch_cycle(cpu, current_time.time_since_epoch() / clock_period, static_cast<std::size_t>(champsim::to_underlying(DISPATCH_WIDTH)),
+                                      static_cast<std::size_t>(available_dispatch_bandwidth.amount_consumed()),
                                       num_wp_dispatched, DISPATCH_BUFFER, dispatch_stall(), recovering_from_mispredict);
 
   return available_dispatch_bandwidth.amount_consumed();
@@ -812,7 +813,8 @@ long O3_CPU::execute_instruction()
   }
 
   ::count_in_histogram(sim_stats.issue_width_histogram, static_cast<std::size_t>(exec_bw.amount_consumed()));
-  champsim::listeners::issue_cycle(cpu, current_time.time_since_epoch() / clock_period, static_cast<std::size_t>(exec_bw.amount_consumed()), num_wp_issued, ROB,
+  champsim::listeners::issue_cycle(cpu, current_time.time_since_epoch() / clock_period, static_cast<std::size_t>(champsim::to_underlying(EXEC_WIDTH)),
+                                   static_cast<std::size_t>(exec_bw.amount_consumed()), num_wp_issued, ROB,
                                    backend_full(), recovering_from_mispredict);
 
   return exec_bw.amount_consumed();
@@ -1092,9 +1094,11 @@ long O3_CPU::retire_rob()
 
   auto retire_count = std::distance(retire_begin, retire_end);
   ::count_in_histogram(sim_stats.retire_width_histogram, static_cast<std::size_t>(retire_count));
-  champsim::listeners::retire_cycle(cpu, cycles, static_cast<std::size_t>(retire_count), ROB, recovering_from_mispredict, head_state());
   num_retired += retire_count;
   ROB.erase(retire_begin, retire_end);
+  // After the erase, so the ROB head (and head_state) is the oldest instr. that didn't retire this cycle
+  champsim::listeners::retire_cycle(cpu, cycles, static_cast<std::size_t>(champsim::to_underlying(RETIRE_WIDTH)), static_cast<std::size_t>(retire_count), ROB,
+                                    recovering_from_mispredict, head_state());
 
   return retire_count;
 }

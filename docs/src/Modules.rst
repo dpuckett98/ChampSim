@@ -209,29 +209,35 @@ A run's listeners come from two places:
 ChampSim ships these listener models:
 
 * ``HEARTBEAT`` — prints each core's progress every ``heartbeat_frequency`` retired instructions.
-* ``RETIRE_CPI_STACK`` — a top-level CPI stack at the retire stage. Each core cycle is
-  counted as exactly one of: *retiring* (at least one instruction retired),
-  *mis-speculating* (nothing retired and the ROB is empty while the core recovers from a
-  misprediction), *stalled* (nothing retired because the correct-path ROB head hasn't
-  completed), or *drained* (nothing retired and the ROB is empty for any other reason,
-  i.e. the front end isn't supplying instructions). The counts are printed per core at the
-  end of each non-warmup phase. Enable it with
+* ``RETIRE_CPI_STACK`` — a top-level CPI stack at the retire stage, counted in slots: each
+  core cycle has as many slots as the retire width. A slot that retires an instruction is
+  *retiring*; a cycle's unused slots all go to one category, decided by the oldest instruction
+  that didn't retire: *mis-speculating* (the ROB is empty while the core recovers from a
+  misprediction), *stalled* (the correct-path ROB head hasn't completed; broken down further by
+  where the head is in its lifecycle), or *drained* (the ROB is empty for any other reason, i.e.
+  the front end isn't supplying instructions). The counts are printed per core at the end of
+  each non-warmup phase. Enable it with
   ``{"name": "cpi_stack", "module": "listener", "model": "RETIRE_CPI_STACK"}``.
-* ``DISPATCH_CPI_STACK`` — the same breakdown at the dispatch stage: *dispatching* (at least
-  one correct-path instruction dispatched), *mis-speculating* (only wrong-path instructions
-  dispatched, or nothing dispatched while the oldest waiting instruction is on the wrong path or
-  the core recovers from a misprediction), *stalled* (the oldest waiting instruction doesn't fit
-  in the ROB, LQ, or SQ), or *drained* (the front end had nothing ready to dispatch).
-* ``ISSUE_CPI_STACK`` — the same breakdown at the issue stage: *issuing* (at least one
-  correct-path instruction issued), *mis-speculating* (only wrong-path instructions issued or
-  waiting to issue, or nothing waiting while the core recovers from a misprediction), *stalled*
-  (a correct-path instruction is waiting on operands, scheduling, or a physical register, or
-  nothing is waiting and the ROB, LQ, or SQ is full), or *drained* (nothing waiting and the
-  front end isn't supplying instructions).
+* ``DISPATCH_CPI_STACK`` — the same breakdown at the dispatch stage, with dispatch-width slots:
+  *dispatching* (a slot that dispatched a correct-path instruction), *mis-speculating* (a slot
+  that dispatched a wrong-path instruction, or unused slots while the oldest waiting instruction
+  is on the wrong path or the core recovers from a misprediction), *stalled* (unused slots while
+  the oldest waiting instruction doesn't fit in the ROB, LQ, or SQ; broken down by which), or
+  *drained* (unused slots while the front end has nothing ready to dispatch).
+* ``ISSUE_CPI_STACK`` — the same breakdown at the issue stage, with execute-width slots:
+  *issuing* (a slot that issued a correct-path instruction), *mis-speculating* (a slot that
+  issued a wrong-path instruction, or unused slots while only wrong-path instructions wait to
+  issue or nothing waits while the core recovers from a misprediction), *stalled* (unused slots
+  while a correct-path instruction waits on operands, scheduling, or a physical register, or
+  nothing waits and the ROB, LQ, or SQ is full), or *drained* (unused slots while nothing waits
+  and the front end isn't supplying instructions).
 
-All three print ``CPU <n> <stage> CPI stack`` and one line per category, and their categories
-always add up to the phase's cycle count. The dispatch and issue stacks count correct-path
-instructions dispatched or issued, which can differ slightly from the number retired.
+All three print ``CPU <n> <stage> CPI stack`` with the total slots, the width, the cycles, the
+instructions, and the CPI, then one line per category with its slots, its share of all slots,
+and its CPI contribution (its slots divided by the width and the instructions). The categories
+always add up to width × cycles slots, and their CPI contributions to the phase's CPI. The
+dispatch and issue stacks count correct-path instructions dispatched or issued, which can differ
+slightly from the number retired.
 
 .. doxygenstruct:: champsim::modules::listener
    :members:

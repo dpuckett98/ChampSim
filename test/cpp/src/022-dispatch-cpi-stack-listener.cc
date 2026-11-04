@@ -24,28 +24,19 @@ constexpr champsim::backend_stall rob{true, false, false};
 constexpr champsim::backend_stall lq{false, true, false};
 constexpr champsim::backend_stall sq{false, false, true};
 
-TEST_CASE("A dispatch cycle that dispatches a correct-path instruction is dispatching") {
-  REQUIRE(stack::classify(1, 0, make_buffer(4), none, false) == stack::DISPATCHING);
-  REQUIRE(stack::classify(3, 2, make_buffer(4, true), rob, true) == stack::DISPATCHING);
+TEST_CASE("Unused dispatch slots with a wrong-path head that fits in the back end are mis-speculating") {
+  REQUIRE(stack::classify_unused(make_buffer(2, true), none, false) == stack::MIS_SPECULATING);
 }
 
-TEST_CASE("A dispatch cycle that dispatches only wrong-path instructions is mis-speculating") {
-  REQUIRE(stack::classify(2, 2, make_buffer(4, true), none, false) == stack::MIS_SPECULATING);
+TEST_CASE("Unused dispatch slots whose head doesn't fit in the back end are stalled, whichever path the head is on") {
+  REQUIRE(stack::classify_unused(make_buffer(2), rob, false) == stack::STALLED);
+  REQUIRE(stack::classify_unused(make_buffer(2), rob, true) == stack::STALLED);
+  REQUIRE(stack::classify_unused(make_buffer(2, true), rob, false) == stack::STALLED);
+  REQUIRE(stack::classify_unused(make_buffer(2), lq, false) == stack::STALLED);
+  REQUIRE(stack::classify_unused(make_buffer(2), sq, false) == stack::STALLED);
 }
 
-TEST_CASE("An idle dispatch cycle with a wrong-path head that fits in the back end is mis-speculating") {
-  REQUIRE(stack::classify(0, 0, make_buffer(2, true), none, false) == stack::MIS_SPECULATING);
-}
-
-TEST_CASE("An idle dispatch cycle whose head doesn't fit in the back end is stalled, whichever path the head is on") {
-  REQUIRE(stack::classify(0, 0, make_buffer(2), rob, false) == stack::STALLED);
-  REQUIRE(stack::classify(0, 0, make_buffer(2), rob, true) == stack::STALLED);
-  REQUIRE(stack::classify(0, 0, make_buffer(2, true), rob, false) == stack::STALLED);
-  REQUIRE(stack::classify(0, 0, make_buffer(2), lq, false) == stack::STALLED);
-  REQUIRE(stack::classify(0, 0, make_buffer(2), sq, false) == stack::STALLED);
-}
-
-TEST_CASE("A stalled dispatch cycle is charged to the first full structure in the order ROB, LQ, SQ") {
+TEST_CASE("Stalled dispatch slots are charged to the first full structure in the order ROB, LQ, SQ") {
   REQUIRE(stack::classify_stall(rob) == stack::ROB_FULL);
   REQUIRE(stack::classify_stall(lq) == stack::LQ_FULL);
   REQUIRE(stack::classify_stall(sq) == stack::SQ_FULL);
@@ -54,14 +45,14 @@ TEST_CASE("A stalled dispatch cycle is charged to the first full structure in th
   REQUIRE(stack::classify_stall({false, true, true}) == stack::LQ_FULL);
 }
 
-TEST_CASE("An idle dispatch cycle with nothing ready is mis-speculating while recovering from a mispredict, and drained otherwise") {
-  REQUIRE(stack::classify(0, 0, make_buffer(0), none, true) == stack::MIS_SPECULATING);
-  REQUIRE(stack::classify(0, 0, make_buffer(2), none, true) == stack::MIS_SPECULATING);
-  REQUIRE(stack::classify(0, 0, make_buffer(0), none, false) == stack::DRAINED);
-  REQUIRE(stack::classify(0, 0, make_buffer(2), none, false) == stack::DRAINED);
+TEST_CASE("Unused dispatch slots with nothing ready are mis-speculating while recovering from a mispredict, and drained otherwise") {
+  REQUIRE(stack::classify_unused(make_buffer(0), none, true) == stack::MIS_SPECULATING);
+  REQUIRE(stack::classify_unused(make_buffer(2), none, true) == stack::MIS_SPECULATING);
+  REQUIRE(stack::classify_unused(make_buffer(0), none, false) == stack::DRAINED);
+  REQUIRE(stack::classify_unused(make_buffer(2), none, false) == stack::DRAINED);
 }
 
-TEST_CASE("The dispatch CPI stack counts cycles and correct-path instructions and prints them at the end of a non-warmup phase") {
+TEST_CASE("The dispatch CPI stack counts slots and correct-path instructions and prints them at the end of a non-warmup phase") {
   std::ostringstream out;
   stack uut{champsim::modules::ModuleBuilder("test_cpi_stack", "DISPATCH_CPI_STACK")};
   uut.std_out = &out;
@@ -69,42 +60,43 @@ TEST_CASE("The dispatch CPI stack counts cycles and correct-path instructions an
   const auto empty = make_buffer(0);
 
   uut.begin_phase(true);
-  uut.dispatch_cycle(0, 0, 2, 0, empty, none, false);
-  uut.dispatch_cycle(0, 0, 0, 0, make_buffer(1), rob, false);
+  uut.dispatch_cycle(0, 0, 4, 2, 0, empty, none, false);
+  uut.dispatch_cycle(0, 0, 4, 0, 0, make_buffer(1), rob, false);
   uut.end_phase(true);
   REQUIRE(out.str().empty());
 
   uut.begin_phase(false);
-  uut.dispatch_cycle(0, 1, 4, 1, empty, none, false);                     // dispatching, 3 correct-path instrs.
-  uut.dispatch_cycle(0, 2, 2, 2, empty, none, false);                     // mis-speculating
-  uut.dispatch_cycle(0, 3, 0, 0, make_buffer(1), rob, false);             // stalled, ROB full
-  uut.dispatch_cycle(0, 4, 0, 0, make_buffer(1), {true, true, false}, false); // stalled, ROB full
-  uut.dispatch_cycle(0, 5, 0, 0, make_buffer(1), sq, false);              // stalled, SQ full
-  uut.dispatch_cycle(0, 6, 0, 0, make_buffer(1), lq, false);              // stalled, LQ full
-  uut.dispatch_cycle(0, 7, 1, 0, empty, rob, false);                      // dispatching (the stall isn't counted)
-  uut.dispatch_cycle(0, 8, 0, 0, empty, none, false);                     // drained
+  uut.dispatch_cycle(0, 1, 4, 4, 1, empty, none, false);                     // 3 dispatching, 1 mis-speculating
+  uut.dispatch_cycle(0, 2, 4, 2, 2, empty, none, false);                     // 2 mis-speculating, 2 drained
+  uut.dispatch_cycle(0, 3, 4, 0, 0, make_buffer(1), rob, false);             // 4 stalled, ROB full
+  uut.dispatch_cycle(0, 4, 4, 0, 0, make_buffer(1), {true, true, false}, false); // 4 stalled, ROB full
+  uut.dispatch_cycle(0, 5, 4, 0, 0, make_buffer(1), sq, false);              // 4 stalled, SQ full
+  uut.dispatch_cycle(0, 6, 4, 0, 0, make_buffer(1), lq, false);              // 4 stalled, LQ full
+  uut.dispatch_cycle(0, 7, 4, 1, 0, empty, rob, false);                      // 1 dispatching, 3 stalled, ROB full
+  uut.dispatch_cycle(0, 8, 4, 0, 0, empty, none, false);                     // 4 drained
   uut.end_phase(false);
 
-  REQUIRE(uut.per_cpu.at(0).cycles == std::array<uint64_t, stack::NUM_CATEGORIES>{2, 1, 4, 1});
-  REQUIRE(uut.per_cpu.at(0).sub_cycles == std::array<uint64_t, stack::NUM_SUBCATEGORIES>{2, 1, 1});
+  REQUIRE(uut.per_cpu.at(0).slots == std::array<uint64_t, stack::NUM_CATEGORIES>{4, 3, 19, 6});
+  REQUIRE(uut.per_cpu.at(0).sub_slots == std::array<uint64_t, stack::NUM_SUBCATEGORIES>{11, 4, 4});
+  REQUIRE(uut.per_cpu.at(0).cycles == 8);
   REQUIRE(uut.per_cpu.at(0).instrs == 4);
 
-  const std::string expected = "CPU 0 dispatch CPI stack: cycles: 8 instructions: 4 CPI: 2\n"
-                               "CPU 0 dispatch dispatching: cycles: 2 (25%) CPI: 0.5\n"
-                               "CPU 0 dispatch mis-speculating: cycles: 1 (12.5%) CPI: 0.25\n"
-                               "CPU 0 dispatch stalled: cycles: 4 (50%) CPI: 1\n"
-                               "CPU 0 dispatch stalled ROB full: cycles: 2 (25%) CPI: 0.5\n"
-                               "CPU 0 dispatch stalled LQ full: cycles: 1 (12.5%) CPI: 0.25\n"
-                               "CPU 0 dispatch stalled SQ full: cycles: 1 (12.5%) CPI: 0.25\n"
-                               "CPU 0 dispatch drained: cycles: 1 (12.5%) CPI: 0.25\n";
+  const std::string expected = "CPU 0 dispatch CPI stack: slots: 32 (width 4) cycles: 8 instructions: 4 CPI: 2\n"
+                               "CPU 0 dispatch dispatching: slots: 4 (12.5%) CPI: 0.25\n"
+                               "CPU 0 dispatch mis-speculating: slots: 3 (9.375%) CPI: 0.1875\n"
+                               "CPU 0 dispatch stalled: slots: 19 (59.38%) CPI: 1.188\n"
+                               "CPU 0 dispatch stalled ROB full: slots: 11 (34.38%) CPI: 0.6875\n"
+                               "CPU 0 dispatch stalled LQ full: slots: 4 (12.5%) CPI: 0.25\n"
+                               "CPU 0 dispatch stalled SQ full: slots: 4 (12.5%) CPI: 0.25\n"
+                               "CPU 0 dispatch drained: slots: 6 (18.75%) CPI: 0.375\n";
   REQUIRE(out.str() == expected);
 
   // Counts, including the breakdown, reset at the start of the next phase
   out.str("");
   uut.begin_phase(false);
-  uut.dispatch_cycle(0, 9, 0, 0, make_buffer(1), sq, false);
+  uut.dispatch_cycle(0, 9, 4, 0, 0, make_buffer(1), sq, false);
   uut.end_phase(false);
-  REQUIRE(uut.per_cpu.at(0).sub_cycles == std::array<uint64_t, stack::NUM_SUBCATEGORIES>{0, 0, 1});
+  REQUIRE(uut.per_cpu.at(0).sub_slots == std::array<uint64_t, stack::NUM_SUBCATEGORIES>{0, 0, 4});
 }
 
 struct empty_env : champsim::modules::environment_module {

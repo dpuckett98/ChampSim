@@ -13,14 +13,14 @@
 namespace champsim
 {
 /**
- * Listener that builds a top-level CPI stack at the retire stage. Every core cycle is put in exactly one category:
- * - retiring: at least one instruction retired;
- * - mis-speculating: nothing retired because the core is recovering from a misprediction, i.e. the ROB is empty and no correct-path instruction has been
- *   dispatched since the flush (or, defensively, the ROB head is a wrong-path instruction);
- * - stalled: nothing retired because the ROB head (a correct-path instruction) hasn't completed;
- * - drained: nothing retired because the ROB is empty and the core isn't recovering from a misprediction, i.e. the front end isn't supplying instructions.
+ * Listener that builds a top-level CPI stack at the retire stage, in slots: each cycle has retire-width slots (see champsim::cpi_stack). Each slot that
+ * retired an instruction is retiring; the unused slots of a cycle all go to one category, decided by the oldest instruction that didn't retire:
+ * - mis-speculating: the core is recovering from a misprediction, i.e. the ROB is empty and no correct-path instruction has been dispatched since the flush
+ *   (or, defensively, the ROB head is a wrong-path instruction);
+ * - stalled: the ROB head (a correct-path instruction) hasn't completed;
+ * - drained: the ROB is empty and the core isn't recovering from a misprediction, i.e. the front end isn't supplying instructions.
  *
- * Stalled cycles are further broken down by where the ROB head is in its lifecycle (see champsim::rob_head_state), printed right after the stalled line:
+ * Stalled slots are further broken down by where the ROB head is in its lifecycle (see champsim::rob_head_state), printed right after the stalled line:
  * waiting to schedule, schedule blocked (no free physical registers), waiting for operands, waiting to issue, executing, load waiting on store, load not
  * issued (to the L1D), load in flight (in the L1D), store pending, and waiting to complete (it completes after retire this cycle and retires next cycle).
  *
@@ -41,11 +41,11 @@ public:
 
   explicit retire_cpi_stack(champsim::modules::ModuleBuilder builder);
 
-  // The category a retire-stage cycle belongs to
-  [[nodiscard]] static category classify(std::size_t num_retired, const std::deque<ooo_model_instr>& rob, bool recovering_from_mispredict);
+  // The category of a retire-stage cycle's unused slots, given the ROB after retirement
+  [[nodiscard]] static category classify_unused(const std::deque<ooo_model_instr>& rob, bool recovering_from_mispredict);
 
-  void retire_cycle(uint32_t cpu, uint64_t cycle, std::size_t num_retired, const std::deque<ooo_model_instr>& rob, bool recovering_from_mispredict,
-                    champsim::rob_head_state head_state) override;
+  void retire_cycle(uint32_t cpu, uint64_t cycle, std::size_t width, std::size_t num_retired, const std::deque<ooo_model_instr>& rob,
+                    bool recovering_from_mispredict, champsim::rob_head_state head_state) override;
 };
 } // namespace champsim
 
