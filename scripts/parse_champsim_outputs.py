@@ -27,10 +27,12 @@ still picked up, as cpu<n>.<label> columns, so newly added counters show up with
 Usage:
     python3 parse_champsim_outputs.py RESULTS_DIR [-o results.csv|.parquet|.pkl] [--glob '*.txt']
                                       [--recursive] [--name-regex '(?P<config>[^.]+)\\.(?P<bench>.+)\\.txt']
+                                      [--averages per_config.csv [--common-traces]]
 
 As a library:
-    from parse_champsim_outputs import parse_dir, parse_file
+    from parse_champsim_outputs import parse_dir, parse_file, config_averages
     df = parse_dir("results/", glob="*.out")
+    averages = config_averages(df)   # needs a 'config' column, e.g. from name_regex
 """
 
 import argparse
@@ -439,6 +441,50 @@ def cycles_removed(df, baseline="gc", trace_col="trace", config_col="config", cy
     return cycles.drop(columns=baseline).reindex(columns=all_configs).rsub(base, axis=0).div(base, axis=0) * 100
 
 
+def config_averages(df, config_col="config", trace_col="trace", common_traces=False):
+    """
+    The average of every numeric stat for each config: one row per config, one column per stat, plus 'n_runs'
+    (how many runs went into each average). Only completed runs count; histogram (dict) and text columns are skipped.
+
+    Each stat is the arithmetic mean over that config's runs, so e.g. 'cpu0.ipc' is the mean IPC, not total
+    instructions / total cycles. With common_traces, only traces that completed under every config (that has any
+    completed run) are averaged, so all configs average over the same traces.
+    """
+    if config_col not in df.columns:
+        raise ValueError(f"no {config_col!r} column; pass a name regex with a 'config' group")
+    runs = df[df["completed"].astype(bool)]
+    if common_traces:
+        if trace_col not in runs.columns:
+            raise ValueError(f"common_traces needs a {trace_col!r} column")
+        per_trace = runs.groupby(trace_col)[config_col].nunique()
+        keep = per_trace[per_trace == runs[config_col].nunique()].index
+        runs = runs[runs[trace_col].isin(keep)]
+        if runs.empty:
+            print("warning: no trace completed under every config", file=sys.stderr)
+    stats = runs.drop(columns=["completed"]).select_dtypes(include="number")
+    means = stats.groupby(runs[config_col]).mean()
+    means.insert(0, "n_runs", runs.groupby(config_col).size())
+    return means
+
+
+def write_table(table, path, index=False):
+    """Write a DataFrame to .csv, .parquet, .pkl/.pickle or .json, picked by the file extension."""
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if index:
+        table = table.reset_index()
+    if out.suffix == ".csv":
+        table.to_csv(out, index=False)
+    elif out.suffix == ".parquet":
+        table.to_parquet(out, index=False)
+    elif out.suffix in (".pkl", ".pickle"):
+        table.to_pickle(out)
+    elif out.suffix == ".json":
+        table.to_json(out, orient="records", indent=1)
+    else:
+        raise ValueError(f"unknown output format {out.suffix!r}")
+
+
 def plot_cycles_removed(df, baseline="gc", output=None, separate=False, ncols=4, sharey=True, sort=True, **kwargs):
     """
     One bar chart per config: trace on the x axis, % of cycles removed vs. the baseline config on the y axis.
@@ -766,6 +812,10 @@ def main():
     ap.add_argument("--independent-y", action="store_true", help="with --plot / --cpi-summary, give each panel its own y scale")
     ap.add_argument("--cpi-stacks", metavar="DIR", help="write one CPI-stack figure per trace into DIR")
     ap.add_argument("--cpi-summary", metavar="FILE.png", help="write every trace's CPI stacks into one grid figure")
+    ap.add_argument("--averages", metavar="FILE",
+                    help="write each config's average of every stat (one row per config) to .csv/.parquet/.pkl/.json")
+    ap.add_argument("--common-traces", action="store_true",
+                    help="with --averages, only average traces that completed under every config")
     ap.add_argument("--stack-config", default="gc",
                     help="with --cpi-stacks, which config's runs to plot (default: gc; ignored without a config column)")
     args = ap.parse_args()
@@ -777,18 +827,22 @@ def main():
     print(f"parsed {len(df)} files, {len(df.columns)} columns, {int(df['completed'].sum())} completed", file=sys.stderr)
 
     if args.output:
-        out = Path(args.output)
-        if out.suffix == ".csv":
-            df.to_csv(out, index=False)
-        elif out.suffix == ".parquet":
-            df.to_parquet(out, index=False)
-        elif out.suffix in (".pkl", ".pickle"):
-            df.to_pickle(out)
-        elif out.suffix == ".json":
-            df.to_json(out, orient="records", indent=1)
-        else:
-            sys.exit(f"unknown output format {out.suffix!r}")
-        print(f"wrote {out}", file=sys.stderr)
+        try:
+            write_table(df, args.output)
+        except ValueError as e:
+            sys.exit(str(e))
+        print(f"wrote {args.output}", file=sys.stderr)
+    if args.averages:
+        if "config" not in df.columns:
+            sys.exit("--averages needs a 'config' column; pass --name-regex with a config group")
+        averages = config_averages(df, common_traces=args.common_traces)
+        try:
+            write_table(averages, args.averages, index=True)
+        except ValueError as e:
+            sys.exit(str(e))
+        print(f"wrote {args.averages} ({len(averages)} configs x {len(averages.columns)} stats)", file=sys.stderr)
+        brief = [c for c in ("n_runs", "cpu0.ipc", "cpu0.cycles") if c in averages.columns]
+        print(averages[brief].to_string())
     if args.plot:
         missing = {"trace", "config"} - set(df.columns)
         if missing:
@@ -802,7 +856,7 @@ def main():
     if args.cpi_summary:
         plot_cpi_stack_summary(df, config=args.stack_config, output=args.cpi_summary, sharey=not args.independent_y)
         print(f"wrote {args.cpi_summary}", file=sys.stderr)
-    if not args.output and not args.plot and not args.cpi_stacks and not args.cpi_summary:
+    if not (args.output or args.averages or args.plot or args.cpi_stacks or args.cpi_summary):
         summary = [c for c in df.columns if c in ("file", "completed") or c.endswith(".ipc")]
         print(df[summary].to_string(index=False))
 
