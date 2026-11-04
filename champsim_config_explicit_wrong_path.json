@@ -418,6 +418,8 @@
       "perfect_branch_prediction": false,
       "always_dib_hit": false,
       "ignore_register_dependencies": false,
+      "instant_dcache": false,
+      "instant_icache": false,
       "dib_set": 32,
       "dib_way": 8,
       "dib_window": 16,

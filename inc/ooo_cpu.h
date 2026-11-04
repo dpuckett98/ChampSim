@@ -147,6 +147,8 @@ public:
   bool perfect_branch_prediction = false; // skip the BTB and branch predictor; every branch is predicted correctly
   bool always_dib_hit = false;            // every instruction hits in the decoded instruction buffer
   bool ignore_register_dependencies = false; // clear every instruction's source and destination registers, as fast warmup does
+  bool instant_dcache = false; // loads and stores complete as soon as they issue, without going to the L1D (so also skipping the DTLB)
+  bool instant_icache = false; // instruction fetches complete as soon as they issue, without going to the L1I (so also skipping the ITLB)
   std::optional<ooo_model_instr> fdip_peeked_instr;
   std::optional<uint64_t> pending_flush_id; // instr_id of the oldest mispredicted branch awaiting a squash of younger instrs.
 
@@ -269,6 +271,8 @@ public:
     perfect_branch_prediction = builder.get_parameter<bool>("perfect_branch_prediction", true, false);
     always_dib_hit = builder.get_parameter<bool>("always_dib_hit", true, false);
     ignore_register_dependencies = builder.get_parameter<bool>("ignore_register_dependencies", true, false);
+    instant_dcache = builder.get_parameter<bool>("instant_dcache", true, false);
+    instant_icache = builder.get_parameter<bool>("instant_icache", true, false);
 
     // Construct branch predictor submodules
     for (const auto& sub : builder.get_submodules("branch_predictor"))

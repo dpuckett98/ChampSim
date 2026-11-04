@@ -542,6 +542,12 @@ bool O3_CPU::do_fetch_instruction(std::deque<ooo_model_instr>::iterator begin, s
                std::size(fetch_packet.instr_depend_on_me), begin->ready_time.time_since_epoch() / clock_period);
   }
 
+  // instant_icache: the block arrives now, without a request to the L1I
+  if (instant_icache) {
+    std::for_each(begin, end, [](auto& instr) { instr.fetch_completed = true; });
+    return true;
+  }
+
   return L1I_bus.issue_read(fetch_packet);
 }
 
@@ -918,6 +924,14 @@ long O3_CPU::operate_lsq()
   for (auto& lq_entry : LQ) {
     if (load_bw.has_remaining() && lq_entry.has_value() && lq_entry->producer_id == std::numeric_limits<uint64_t>::max() && !lq_entry->fetch_issued
         && lq_entry->ready_time < current_time) {
+      // instant_dcache: the data arrives now, without a request to the L1D
+      if (instant_dcache) {
+        load_bw.consume();
+        lq_entry->finish(std::begin(ROB), std::end(ROB));
+        lq_entry.reset();
+        continue;
+      }
+
       auto success = execute_load(*lq_entry);
       if (success) {
         load_bw.consume();
@@ -949,6 +963,14 @@ void O3_CPU::do_finish_store(const LSQ_ENTRY& sq_entry)
 
 bool O3_CPU::do_complete_store(const LSQ_ENTRY& sq_entry)
 {
+  // instant_dcache: the retired store's write is absorbed without a request to the L1D
+  if (instant_dcache) {
+    if constexpr (champsim::debug_print) {
+      fmt::print("[SQ] {} instr_id: {} vaddr: {} (instant_dcache)\n", __func__, sq_entry.instr_id, sq_entry.virtual_address);
+    }
+    return true;
+  }
+
   CacheBus::request_type data_packet;
   data_packet.v_address = sq_entry.virtual_address;
   data_packet.instr_id = sq_entry.instr_id;
