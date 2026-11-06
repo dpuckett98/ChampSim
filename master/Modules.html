@@ -7,23 +7,23 @@
 
     <title>The ChampSim Module System &#8212; ChampSim  documentation</title>
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=a746c00c" />
-    <link rel="stylesheet" type="text/css" href="_static/nature.css?v=601dbdee" />
+    <link rel="stylesheet" type="text/css" href="_static/nature.css?v=279e0f84" />
     <script src="_static/documentation_options.js?v=5929fcd5"></script>
-    <script src="_static/doctools.js?v=888ff710"></script>
-    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Creating a Configuration File" href="Creating-a-configuration-file.html" />
+    <link rel="next" title="Tutorial: Creating New Modules" href="Tutorial.html" />
     <link rel="prev" title="Welcome to the ChampSim wiki!" href="index.html" /> 
   </head><body>
-    <div class="related" role="navigation" aria-label="related navigation">
+    <div class="related" role="navigation" aria-label="Related">
       <h3>Navigation</h3>
       <ul>
         <li class="right" style="margin-right: 10px">
           <a href="genindex.html" title="General Index"
              accesskey="I">index</a></li>
         <li class="right" >
-          <a href="Creating-a-configuration-file.html" title="Creating a Configuration File"
+          <a href="Tutorial.html" title="Tutorial: Creating New Modules"
              accesskey="N">next</a> |</li>
         <li class="right" >
           <a href="index.html" title="Welcome to the ChampSim wiki!"
@@ -40,202 +40,803 @@
             
   <section id="the-champsim-module-system">
 <span id="modules"></span><h1>The ChampSim Module System<a class="headerlink" href="#the-champsim-module-system" title="Link to this heading">¶</a></h1>
-<p>ChampSim uses four kinds of modules:</p>
+<p>ChampSim provides a runtime module system that allows you to swap implementations of key
+simulator components without recompilation. Each component type has an <strong>interface</strong> (a C++
+abstract base class with pure virtual methods) and one or more <strong>implementations</strong> (concrete
+classes that override every method). ChampSim ships default implementations for all
+interfaces; you can replace any of them with your own.</p>
+<p>Modules are implemented as C++ classes that inherit from an interface base class in the
+<code class="docutils literal notranslate"><span class="pre">champsim::modules</span></code> namespace. Every module:</p>
+<ol class="arabic simple">
+<li><p><strong>Inherits</strong> from one of the interface base classes listed below.</p></li>
+<li><p><strong>Implements</strong> every pure virtual method declared by that interface (use empty stubs
+<code class="docutils literal notranslate"><span class="pre">override</span> <span class="pre">{}</span></code> for methods where no behavior is needed).</p></li>
+<li><p><strong>Accepts a</strong> <code class="docutils literal notranslate"><span class="pre">champsim::modules::ModuleBuilder</span></code> <strong>in its constructor</strong> to receive
+configuration parameters and access its parent module.</p></li>
+<li><p><strong>Registers itself</strong> with a static registration line so the simulator can instantiate it
+by name at runtime.</p></li>
+</ol>
+<section id="interfaces-and-implementations">
+<h2>Interfaces and Implementations<a class="headerlink" href="#interfaces-and-implementations" title="Link to this heading">¶</a></h2>
+<p>ChampSim distinguishes between <strong>interfaces</strong> and <strong>implementations</strong>:</p>
 <ul class="simple">
-<li><p>Branch Direction Predictors</p></li>
-<li><p>Branch Target Predictors</p></li>
-<li><p>Memory Prefetchers</p></li>
-<li><p>Cache Replacement Policies</p></li>
+<li><p>An <strong>interface</strong> is an abstract base class that defines the contract a module must fulfill.
+Interfaces live in <code class="docutils literal notranslate"><span class="pre">champsim::modules</span></code> and have names like <code class="docutils literal notranslate"><span class="pre">prefetcher</span></code>,
+<code class="docutils literal notranslate"><span class="pre">replacement</span></code>, <code class="docutils literal notranslate"><span class="pre">branch_predictor</span></code>, <code class="docutils literal notranslate"><span class="pre">btb</span></code>, <code class="docutils literal notranslate"><span class="pre">cache_module</span></code>, <code class="docutils literal notranslate"><span class="pre">core_module</span></code>, etc.</p></li>
+<li><p>An <strong>implementation</strong> is a concrete class that inherits from an interface and provides the
+actual behavior. ChampSim ships default implementations (e.g. <code class="docutils literal notranslate"><span class="pre">DEFAULT_CACHE</span></code>,
+<code class="docutils literal notranslate"><span class="pre">DEFAULT_CORE</span></code>, <code class="docutils literal notranslate"><span class="pre">lru</span></code>, <code class="docutils literal notranslate"><span class="pre">hashed_perceptron</span></code>, <code class="docutils literal notranslate"><span class="pre">ip_stride</span></code>, etc.).</p></li>
 </ul>
-<p>Each of these is implemented as a set of hook functions. Each hook must be implemented, or compilation will fail.</p>
+<p>When writing a new module, you implement an existing interface. The five user-facing
+module interfaces are:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">champsim::modules::branch_predictor</span></code> — attached to a core</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">champsim::modules::btb</span></code> — attached to a core</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">champsim::modules::prefetcher</span></code> — attached to a cache</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">champsim::modules::replacement</span></code> — attached to a cache</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">champsim::modules::listener</span></code> — attached to the environment (see <a class="reference internal" href="#listener-interface">Listener Interface</a>)</p></li>
+</ul>
+<p>Higher-level interfaces (<code class="docutils literal notranslate"><span class="pre">cache_module</span></code>, <code class="docutils literal notranslate"><span class="pre">core_module</span></code>, <code class="docutils literal notranslate"><span class="pre">memory_controller_module</span></code>,
+etc.) define the contracts that caches, cores, and DRAM controllers fulfill. The default
+implementations <code class="docutils literal notranslate"><span class="pre">DEFAULT_CACHE</span></code> (<code class="docutils literal notranslate"><span class="pre">CACHE</span></code> class) and <code class="docutils literal notranslate"><span class="pre">DEFAULT_CORE</span></code> (<code class="docutils literal notranslate"><span class="pre">O3_CPU</span></code> class)
+implement these interfaces. See <a class="reference internal" href="Cache-model.html#cache-model"><span class="std std-ref">Cache Model</span></a> and <a class="reference internal" href="Core-model.html#core-model"><span class="std std-ref">Core Model</span></a> for details.</p>
+</section>
+<section id="module-construction-and-modulebuilder">
+<h2>Module Construction and ModuleBuilder<a class="headerlink" href="#module-construction-and-modulebuilder" title="Link to this heading">¶</a></h2>
+<p>All modules receive a <code class="docutils literal notranslate"><span class="pre">champsim::modules::ModuleBuilder</span></code> in their constructor. The
+<code class="docutils literal notranslate"><span class="pre">ModuleBuilder</span></code> provides:</p>
+<ul class="simple">
+<li><p><strong>Configuration parameters</strong> from the JSON config file via <code class="docutils literal notranslate"><span class="pre">get_parameter&lt;T&gt;()</span></code>.</p></li>
+<li><p><strong>Access to the parent module</strong> via <code class="docutils literal notranslate"><span class="pre">get_parent&lt;T&gt;()</span></code>. For example, a prefetcher can
+obtain a pointer to its parent cache.</p></li>
+<li><p><strong>The module’s name and model</strong> via <code class="docutils literal notranslate"><span class="pre">get_name()</span></code> and <code class="docutils literal notranslate"><span class="pre">get_model()</span></code>.</p></li>
+</ul>
+<p>Example constructor:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">struct</span> <span class="n">my_pref</span> <span class="p">:</span> <span class="n">champsim</span><span class="p">::</span><span class="n">modules</span><span class="p">::</span><span class="n">prefetcher</span> <span class="p">{</span>
+    <span class="n">champsim</span><span class="p">::</span><span class="n">modules</span><span class="p">::</span><span class="n">cache_module</span><span class="o">*</span> <span class="n">cache_</span> <span class="o">=</span> <span class="n">nullptr</span><span class="p">;</span>
+    <span class="nb">int</span> <span class="n">degree</span> <span class="o">=</span> <span class="mi">3</span><span class="p">;</span>
+
+    <span class="n">my_pref</span><span class="p">(</span><span class="n">champsim</span><span class="p">::</span><span class="n">modules</span><span class="p">::</span><span class="n">ModuleBuilder</span> <span class="n">builder</span><span class="p">)</span>
+        <span class="p">:</span> <span class="n">cache_</span><span class="p">(</span><span class="n">builder</span><span class="o">.</span><span class="n">get_parent</span><span class="o">&lt;</span><span class="n">champsim</span><span class="p">::</span><span class="n">modules</span><span class="p">::</span><span class="n">cache_module</span><span class="o">&gt;</span><span class="p">()),</span>
+          <span class="n">degree</span><span class="p">(</span><span class="n">builder</span><span class="o">.</span><span class="n">get_parameter</span><span class="o">&lt;</span><span class="nb">int</span><span class="o">&gt;</span><span class="p">(</span><span class="s2">&quot;degree&quot;</span><span class="p">,</span> <span class="n">true</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+    <span class="p">{}</span>
+<span class="p">};</span>
+</pre></div>
+</div>
+<dl class="cpp struct">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules13ModuleBuilderE">
+<span id="_CPPv3N8champsim7modules13ModuleBuilderE"></span><span id="_CPPv2N8champsim7modules13ModuleBuilderE"></span><span id="champsim::modules::ModuleBuilder"></span><span class="target" id="structchampsim_1_1modules_1_1ModuleBuilder"></span><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ModuleBuilder</span></span></span><a class="headerlink" href="#_CPPv4N8champsim7modules13ModuleBuilderE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Provides configuration parameters and parent access to modules during construction.</p>
+<p>Every module constructor receives a <a class="reference internal" href="#structchampsim_1_1modules_1_1ModuleBuilder"><span class="std std-ref">ModuleBuilder</span></a>. Use it to:<ul class="simple">
+<li><p>Retrieve parameters from the JSON config via get_parameter().</p></li>
+<li><p>Access the parent module (e.g. the cache a prefetcher is attached to) via <a class="reference internal" href="#structchampsim_1_1modules_1_1ModuleBuilder_1a717f16d6a0f015375891a412fbdd29dc"><span class="std std-ref">get_parent()</span></a>.</p></li>
+<li><p>Query the module’s name and model via <a class="reference internal" href="#structchampsim_1_1modules_1_1ModuleBuilder_1a40035c1376c46fe5413a1ead20704ecd"><span class="std std-ref">get_name()</span></a> and <a class="reference internal" href="#structchampsim_1_1modules_1_1ModuleBuilder_1ad842e464294fdc73b02c3d09eace3e72"><span class="std std-ref">get_model()</span></a>. </p></li>
+</ul>
+</p>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules13ModuleBuilder9get_modelEv">
+<span id="_CPPv3NK8champsim7modules13ModuleBuilder9get_modelEv"></span><span id="_CPPv2NK8champsim7modules13ModuleBuilder9get_modelEv"></span><span id="champsim::modules::ModuleBuilder::get_modelC"></span><span class="target" id="structchampsim_1_1modules_1_1ModuleBuilder_1ad842e464294fdc73b02c3d09eace3e72"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">string</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_model</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules13ModuleBuilder9get_modelEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return the model name of this module (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;ip_stride&quot;</span></code>). </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules13ModuleBuilder8get_nameEv">
+<span id="_CPPv3NK8champsim7modules13ModuleBuilder8get_nameEv"></span><span id="_CPPv2NK8champsim7modules13ModuleBuilder8get_nameEv"></span><span id="champsim::modules::ModuleBuilder::get_nameC"></span><span class="target" id="structchampsim_1_1modules_1_1ModuleBuilder_1a40035c1376c46fe5413a1ead20704ecd"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">string</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_name</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules13ModuleBuilder8get_nameEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return the instance name of this module (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;cpu0_L2C.ip_stride&quot;</span></code>). </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4I0ENK8champsim7modules13ModuleBuilder10get_parentEP1Tv">
+<span id="_CPPv3I0ENK8champsim7modules13ModuleBuilder10get_parentEv"></span><span id="_CPPv2I0ENK8champsim7modules13ModuleBuilder10get_parentEv"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="structchampsim_1_1modules_1_1ModuleBuilder_1a717f16d6a0f015375891a412fbdd29dc"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0ENK8champsim7modules13ModuleBuilder10get_parentEP1Tv" title="champsim::modules::ModuleBuilder::get_parent::T"><span class="n"><span class="pre">T</span></span></a><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="sig-name descname"><span class="n"><span class="pre">get_parent</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4I0ENK8champsim7modules13ModuleBuilder10get_parentEP1Tv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return a typed pointer to this module’s parent.</p>
+<p>For prefetchers and replacement policies the parent is a <a class="reference internal" href="#structchampsim_1_1modules_1_1cache__module"><span class="std std-ref">cache_module</span></a>. For branch predictors and BTBs the parent is a <a class="reference internal" href="#structchampsim_1_1modules_1_1core__module"><span class="std std-ref">core_module</span></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>T</strong> – The parent module type (e.g. <code class="docutils literal notranslate"><a class="reference internal" href="#structchampsim_1_1modules_1_1cache__module"><span class="std std-ref"><span class="pre">cache_module</span></span></a></code> or <code class="docutils literal notranslate"><a class="reference internal" href="#structchampsim_1_1modules_1_1core__module"><span class="std std-ref"><span class="pre">core_module</span></span></a></code>). </p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A pointer to the parent module. </p>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+</dd></dl>
+
+</section>
+<section id="module-registration">
+<h2>Module Registration<a class="headerlink" href="#module-registration" title="Link to this heading">¶</a></h2>
+<p>After defining your module class, register it with a static registration line in the
+<code class="docutils literal notranslate"><span class="pre">.cc</span></code> file:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1">#include &quot;my_pref.h&quot;</span>
+<span class="c1">#include &quot;cache.h&quot;</span>
+
+<span class="n">champsim</span><span class="p">::</span><span class="n">modules</span><span class="p">::</span><span class="n">prefetcher</span><span class="p">::</span><span class="n">register_module</span><span class="o">&lt;</span><span class="n">my_pref</span><span class="o">&gt;</span> <span class="n">my_pref_register</span><span class="p">(</span><span class="s2">&quot;my_pref&quot;</span><span class="p">);</span>
+</pre></div>
+</div>
+<p>The string <code class="docutils literal notranslate"><span class="pre">&quot;my_pref&quot;</span></code> is the <strong>model name</strong> — this is the value you use in the JSON
+configuration file to select your module:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span> <span class="s2">&quot;L2C&quot;</span><span class="p">:</span> <span class="p">{</span> <span class="s2">&quot;prefetcher&quot;</span><span class="p">:</span> <span class="s2">&quot;my_pref&quot;</span> <span class="p">}</span> <span class="p">}</span>
+</pre></div>
+</div>
+<p>Or in the explicit config format:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;L2C_prefetcher&quot;</span><span class="p">,</span> <span class="s2">&quot;module&quot;</span><span class="p">:</span> <span class="s2">&quot;prefetcher&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;my_pref&quot;</span><span class="p">,</span> <span class="s2">&quot;degree&quot;</span><span class="p">:</span> <span class="mi">4</span> <span class="p">}</span>
+</pre></div>
+</div>
+<p>By convention, the model name matches the directory name under <code class="docutils literal notranslate"><span class="pre">prefetcher/</span></code>,
+<code class="docutils literal notranslate"><span class="pre">replacement/</span></code>, <code class="docutils literal notranslate"><span class="pre">branch/</span></code>, or <code class="docutils literal notranslate"><span class="pre">btb/</span></code>.</p>
+</section>
 <section id="branch-predictors">
 <h2>Branch Predictors<a class="headerlink" href="#branch-predictors" title="Link to this heading">¶</a></h2>
-<p>A branch predictor module must implement three functions.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">void</span> <span class="n">O3_CPU</span><span class="p">::</span><span class="n">initialize_branch_predictor</span><span class="p">()</span>
-</pre></div>
-</div>
-<p>This function is called when the core is initialized. You can use it to initialize elements of dynamic structures, such as <cite>std::vector</cite> or <cite>std::map</cite>.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">uint8_t</span> <span class="n">O3_CPU</span><span class="p">::</span><span class="n">predict_branch</span><span class="p">(</span><span class="n">uint64_t</span> <span class="n">ip</span><span class="p">,</span> <span class="n">uint64_t</span> <span class="n">predicted_target</span><span class="p">,</span> <span class="n">uint8_t</span> <span class="n">always_taken</span><span class="p">,</span> <span class="n">uint8_t</span> <span class="n">branch_type</span><span class="p">)</span>
-</pre></div>
-</div>
-<p>This function is called when a prediction is needed. The parameters passed are:</p>
-<ul class="simple">
-<li><p>ip: The instruction pointer of the branch</p></li>
-<li><p>predicted_target: The predicted target of the branch. This is passed directly from the branch target predictor module and may be incorrect.</p></li>
-<li><p>always_taken: A boolean value. This parameter will be nonzero if the branch target predictor determines that the branch is always taken.</p></li>
-<li><p>branch_type: One of the following</p>
-<ul>
-<li><p><cite>BRANCH_DIRECT_JUMP</cite>: Direct non-call, unconditional branches, whose target is encoded in the instruction</p></li>
-<li><p><cite>BRANCH_INDIRECT</cite>: Indirect non-call, unconditional branches, whose target is stored in a register</p></li>
-<li><p><cite>BRANCH_CONDITIONAL</cite>: A direct conditional branch</p></li>
-<li><p><cite>BRANCH_DIRECT_CALL</cite>: A call to a procedure whose target is encoded in the instruction</p></li>
-<li><p><cite>BRANCH_INDIRECT_CALL</cite>: A call to a procedure whose target is stored in a register</p></li>
-<li><p><cite>BRANCH_RETURN</cite>: A return to a calling procedure</p></li>
-<li><p><cite>BRANCH_OTHER</cite>: If the branch type cannot be determined</p></li>
+<p>A branch predictor module inherits from <code class="docutils literal notranslate"><span class="pre">champsim::modules::branch_predictor</span></code> and must
+implement three functions.</p>
+<dl class="cpp struct">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules16branch_predictorE">
+<span id="_CPPv3N8champsim7modules16branch_predictorE"></span><span id="_CPPv2N8champsim7modules16branch_predictorE"></span><span id="champsim::modules::branch_predictor"></span><span class="target" id="structchampsim_1_1modules_1_1branch__predictor"></span><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">branch_predictor</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">modules</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">module_base</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4N8champsim7modules16branch_predictorE" title="champsim::modules::branch_predictor"><span class="n"><span class="pre">branch_predictor</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4N8champsim7modules11core_moduleE" title="champsim::modules::core_module"><span class="n"><span class="pre">core_module</span></span></a><span class="p"><span class="pre">&gt;</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules16branch_predictorE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Interface for branch predictor modules.</p>
+<p>Branch predictors are attached to a core (<a class="reference internal" href="#structchampsim_1_1modules_1_1core__module"><span class="std std-ref">core_module</span></a>). Implement the three virtual methods below and register with register_module to create a custom branch predictor. </p>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules16branch_predictor27initialize_branch_predictorEv">
+<span id="_CPPv3N8champsim7modules16branch_predictor27initialize_branch_predictorEv"></span><span id="_CPPv2N8champsim7modules16branch_predictor27initialize_branch_predictorEv"></span><span id="champsim::modules::branch_predictor::initialize_branch_predictor"></span><span class="target" id="structchampsim_1_1modules_1_1branch__predictor_1a48bc29de2313ab87bf793a72d4ce1502"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">initialize_branch_predictor</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules16branch_predictor27initialize_branch_predictorEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Called when the core is initialized. Use this to set up dynamic data structures. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules16branch_predictor18last_branch_resultEN8champsim7addressEN8champsim7addressEb7uint8_t">
+<span id="_CPPv3N8champsim7modules16branch_predictor18last_branch_resultEN8champsim7addressEN8champsim7addressEb7uint8_t"></span><span id="_CPPv2N8champsim7modules16branch_predictor18last_branch_resultEN8champsim7addressEN8champsim7addressEb7uint8_t"></span><span id="champsim::modules::branch_predictor::last_branch_result__champsim::address.champsim::address.b.uint8_t"></span><span class="target" id="structchampsim_1_1modules_1_1branch__predictor_1afbff25c28a78ce8f83def3d8134f1c65"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">last_branch_result</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">ip</span></span>, <span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">target</span></span>, <span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">taken</span></span>, <span class="n"><span class="pre">uint8_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">branch_type</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules16branch_predictor18last_branch_resultEN8champsim7addressEN8champsim7addressEb7uint8_t" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Called when a branch is resolved. All parameters are guaranteed correct.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ip</strong> – The instruction pointer of the branch. </p></li>
+<li><p><strong>target</strong> – The correct target of the branch. </p></li>
+<li><p><strong>taken</strong> – True if the branch was taken. </p></li>
+<li><p><strong>branch_type</strong> – One of BRANCH_DIRECT_JUMP, BRANCH_INDIRECT, BRANCH_CONDITIONAL, BRANCH_DIRECT_CALL, BRANCH_INDIRECT_CALL, BRANCH_RETURN, or BRANCH_OTHER. </p></li>
 </ul>
-</li>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules16branch_predictor14predict_branchEN8champsim7addressEN8champsim7addressEb7uint8_t">
+<span id="_CPPv3N8champsim7modules16branch_predictor14predict_branchEN8champsim7addressEN8champsim7addressEb7uint8_t"></span><span id="_CPPv2N8champsim7modules16branch_predictor14predict_branchEN8champsim7addressEN8champsim7addressEb7uint8_t"></span><span id="champsim::modules::branch_predictor::predict_branch__champsim::address.champsim::address.b.uint8_t"></span><span class="target" id="structchampsim_1_1modules_1_1branch__predictor_1afc24ff195e115a7b0ecfd9b7f1f4736a"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">predict_branch</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">ip</span></span>, <span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">predicted_target</span></span>, <span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">always_taken</span></span>, <span class="n"><span class="pre">uint8_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">branch_type</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules16branch_predictor14predict_branchEN8champsim7addressEN8champsim7addressEb7uint8_t" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Called when a branch direction prediction is needed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ip</strong> – The instruction pointer of the branch. </p></li>
+<li><p><strong>predicted_target</strong> – The predicted target from the BTB (may be incorrect). </p></li>
+<li><p><strong>always_taken</strong> – True if the BTB determines the branch is always taken. </p></li>
+<li><p><strong>branch_type</strong> – One of BRANCH_DIRECT_JUMP, BRANCH_INDIRECT, BRANCH_CONDITIONAL, BRANCH_DIRECT_CALL, BRANCH_INDIRECT_CALL, BRANCH_RETURN, or BRANCH_OTHER. </p></li>
 </ul>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">void</span> <span class="n">O3_CPU</span><span class="p">::</span><span class="n">last_branch_result</span><span class="p">(</span><span class="n">uint64_t</span> <span class="n">ip</span><span class="p">,</span> <span class="n">uint64_t</span> <span class="n">branch_target</span><span class="p">,</span> <span class="n">uint8_t</span> <span class="n">taken</span><span class="p">,</span> <span class="n">uint8_t</span> <span class="n">branch_type</span><span class="p">)</span>
-</pre></div>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>True if the branch is predicted taken, false otherwise. </p>
+</dd>
+</dl>
+</dd></dl>
+
 </div>
-<p>This function is called when a branch is resolved. The parameters are the same as in the previous hook, except that the last three are guaranteed to be correct.</p>
+</dd></dl>
+
 </section>
 <section id="branch-target-buffers">
 <h2>Branch Target Buffers<a class="headerlink" href="#branch-target-buffers" title="Link to this heading">¶</a></h2>
-<p>A BTB module must implement three functions.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">void</span> <span class="n">O3_CPU</span><span class="p">::</span><span class="n">initialize_btb</span><span class="p">()</span>
-</pre></div>
-</div>
-<p>This function is called when the core is initialized. You can use it to initialize elements of dynamic structures, such as <cite>std::vector</cite> or <cite>std::map</cite>.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">std</span><span class="p">::</span><span class="n">pair</span><span class="o">&lt;</span><span class="n">uint64_t</span><span class="p">,</span> <span class="nb">bool</span><span class="o">&gt;</span> <span class="n">O3_CPU</span><span class="p">::</span><span class="n">btb_prediction</span><span class="p">(</span><span class="n">uint64_t</span> <span class="n">ip</span><span class="p">)</span>
-</pre></div>
-</div>
-<p>This function is called when a prediction is needed. The parameters passed are:</p>
-<ul class="simple">
-<li><p>ip: The instruction pointer of the branch</p></li>
+<p>A BTB module inherits from <code class="docutils literal notranslate"><span class="pre">champsim::modules::btb</span></code> and must implement three functions.</p>
+<dl class="cpp struct">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules3btbE">
+<span id="_CPPv3N8champsim7modules3btbE"></span><span id="_CPPv2N8champsim7modules3btbE"></span><span id="champsim::modules::btb"></span><span class="target" id="structchampsim_1_1modules_1_1btb"></span><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">btb</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">modules</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">module_base</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4N8champsim7modules3btbE" title="champsim::modules::btb"><span class="n"><span class="pre">btb</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4N8champsim7modules11core_moduleE" title="champsim::modules::core_module"><span class="n"><span class="pre">core_module</span></span></a><span class="p"><span class="pre">&gt;</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules3btbE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Interface for branch target buffer (BTB) modules.</p>
+<p>BTBs are attached to a core (<a class="reference internal" href="#structchampsim_1_1modules_1_1core__module"><span class="std std-ref">core_module</span></a>). Implement the three virtual methods below and register with register_module to create a custom BTB. </p>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules3btb14initialize_btbEv">
+<span id="_CPPv3N8champsim7modules3btb14initialize_btbEv"></span><span id="_CPPv2N8champsim7modules3btb14initialize_btbEv"></span><span id="champsim::modules::btb::initialize_btb"></span><span class="target" id="structchampsim_1_1modules_1_1btb_1a446c08c5abe96f9ae13fe9ff1ece2206"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">initialize_btb</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules3btb14initialize_btbEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Called when the core is initialized. Use this to set up dynamic data structures. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules3btb10update_btbEN8champsim7addressEN8champsim7addressEb7uint8_t">
+<span id="_CPPv3N8champsim7modules3btb10update_btbEN8champsim7addressEN8champsim7addressEb7uint8_t"></span><span id="_CPPv2N8champsim7modules3btb10update_btbEN8champsim7addressEN8champsim7addressEb7uint8_t"></span><span id="champsim::modules::btb::update_btb__champsim::address.champsim::address.b.uint8_t"></span><span class="target" id="structchampsim_1_1modules_1_1btb_1a2a185b649adc1ae5563b4a42911e775c"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">update_btb</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">ip</span></span>, <span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">predicted_target</span></span>, <span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">taken</span></span>, <span class="n"><span class="pre">uint8_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">branch_type</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules3btb10update_btbEN8champsim7addressEN8champsim7addressEb7uint8_t" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Called when a branch is resolved.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ip</strong> – The instruction pointer of the branch. </p></li>
+<li><p><strong>predicted_target</strong> – The correct target of the branch. </p></li>
+<li><p><strong>taken</strong> – True if the branch was taken. </p></li>
+<li><p><strong>branch_type</strong> – One of BRANCH_DIRECT_JUMP, BRANCH_INDIRECT, BRANCH_CONDITIONAL, BRANCH_DIRECT_CALL, BRANCH_INDIRECT_CALL, BRANCH_RETURN, or BRANCH_OTHER. </p></li>
 </ul>
-<p>The function should return a pair containing the predicted address and a boolean that describes if the branch is known to be always taken. If the prediction fails, the function should return a default-initialized address, e.g. <cite>uint64_t{}</cite>.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">void</span> <span class="n">O3_CPU</span><span class="p">::</span><span class="n">update_btb</span><span class="p">(</span><span class="n">uint64_t</span> <span class="n">ip</span><span class="p">,</span> <span class="n">uint64_t</span> <span class="n">branch_target</span><span class="p">,</span> <span class="n">uint8_t</span> <span class="n">taken</span><span class="p">,</span> <span class="n">uint8_t</span> <span class="n">branch_type</span><span class="p">)</span>
-</pre></div>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules3btb14btb_predictionEN8champsim7addressE7uint8_t">
+<span id="_CPPv3N8champsim7modules3btb14btb_predictionEN8champsim7addressE7uint8_t"></span><span id="_CPPv2N8champsim7modules3btb14btb_predictionEN8champsim7addressE7uint8_t"></span><span id="champsim::modules::btb::btb_prediction__champsim::address.uint8_t"></span><span class="target" id="structchampsim_1_1modules_1_1btb_1a66bbc7295b1ae9c2f765d9a2d94f7ac7"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">pair</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">btb_prediction</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">ip</span></span>, <span class="n"><span class="pre">uint8_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">branch_type</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules3btb14btb_predictionEN8champsim7addressE7uint8_t" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Called when a branch target prediction is needed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ip</strong> – The instruction pointer of the branch. </p></li>
+<li><p><strong>branch_type</strong> – One of the branch type constants. </p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A pair of (predicted target address, always-taken flag). Return <code class="docutils literal notranslate"><span class="pre">{champsim::address{},</span> <span class="pre">false}</span></code> if prediction fails. </p>
+</dd>
+</dl>
+</dd></dl>
+
 </div>
-<p>This function is called when a branch is resolved. The parameters are:</p>
-<ul class="simple">
-<li><p>ip: The instruction pointer of the branch</p></li>
-<li><p>branch_target: The correct target of the branch.</p></li>
-<li><p>taken: A boolean value. This parameter will be nonzero if the branch was taken.</p></li>
-<li><p>branch_type: One of the following</p>
-<ul>
-<li><p><cite>BRANCH_DIRECT_JUMP</cite>: Direct non-call, unconditional branches, whose target is encoded in the instruction</p></li>
-<li><p><cite>BRANCH_INDIRECT</cite>: Indirect non-call, unconditional branches, whose target is stored in a register</p></li>
-<li><p><cite>BRANCH_CONDITIONAL</cite>: A direct conditional branch</p></li>
-<li><p><cite>BRANCH_DIRECT_CALL</cite>: A call to a procedure whose target is encoded in the instruction</p></li>
-<li><p><cite>BRANCH_INDIRECT_CALL</cite>: A call to a procedure whose target is stored in a register</p></li>
-<li><p><cite>BRANCH_RETURN</cite>: A return to a calling procedure</p></li>
-<li><p><cite>BRANCH_OTHER</cite>: If the branch type cannot be determined</p></li>
-</ul>
-</li>
-</ul>
+</dd></dl>
+
 </section>
 <section id="memory-prefetchers">
 <h2>Memory Prefetchers<a class="headerlink" href="#memory-prefetchers" title="Link to this heading">¶</a></h2>
-<p>A prefetcher module must implement five or six functions.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">void</span> <span class="n">CACHE</span><span class="p">::</span><span class="n">prefetcher_initialize</span><span class="p">()</span>
-</pre></div>
-</div>
-<p>This function is called when the cache is initialized. You can use it to initialize elements of dynamic structures, such as <cite>std::vector</cite> or <cite>std::map</cite>.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">uint32_t</span> <span class="n">CACHE</span><span class="p">::</span><span class="n">prefetcher_cache_operate</span><span class="p">(</span><span class="n">uint64_t</span> <span class="n">addr</span><span class="p">,</span> <span class="n">uint64_t</span> <span class="n">ip</span><span class="p">,</span> <span class="n">uint8_t</span> <span class="n">cache_hit</span><span class="p">,</span> <span class="nb">bool</span> <span class="n">useful_prefetch</span><span class="p">,</span> <span class="n">uint8_t</span> <span class="nb">type</span><span class="p">,</span> <span class="n">uint32_t</span> <span class="n">metadata_in</span><span class="p">);</span>
-</pre></div>
-</div>
-<p>This function is called when a tag is checked in the cache. The parameters passed are:</p>
-<ul class="simple">
-<li><p>addr: the address of the packet. If this is the first-level cache, the offset bits are included. Otherwise, the offset bits are zero. If the cache was configured with <cite>“virtual_prefetch”: true</cite>, this address will be a virtual address. Otherwise, this is a physical address.</p></li>
-<li><p>ip: the address of the instruction that initiated the demand. If the packet is a prefetch from another level, this value will be 0.</p></li>
-<li><p>cache_hit: if this tag check is a hit, this value is nonzero. Otherwise, it is 0.</p></li>
-<li><p>useful_prefetch: if this tag check hit a prior prefetch, this value is true.</p></li>
-<li><p>type: the result of <cite>static_cast&lt;std::underlying_type_t&lt;access_type&gt;&gt;(v)</cite> for v in:
-* <cite>access_type::LOAD</cite>
-* <cite>access_type::RFO</cite>
-* <cite>access_type::PREFETCH</cite>
-* <cite>access_type::WRITE</cite>
-* <cite>access_type::TRANSLATION</cite></p></li>
-<li><p>metadata_in: the metadata carried along by the packet.</p></li>
+<p>A prefetcher module inherits from <code class="docutils literal notranslate"><span class="pre">champsim::modules::prefetcher</span></code> and must implement six
+functions. The <code class="docutils literal notranslate"><span class="pre">prefetch_line()</span></code> helper is provided by the base class for issuing
+prefetch requests into the parent cache.</p>
+<dl class="cpp struct">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules10prefetcherE">
+<span id="_CPPv3N8champsim7modules10prefetcherE"></span><span id="_CPPv2N8champsim7modules10prefetcherE"></span><span id="champsim::modules::prefetcher"></span><span class="target" id="structchampsim_1_1modules_1_1prefetcher"></span><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">prefetcher</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">modules</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">module_base</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4N8champsim7modules10prefetcherE" title="champsim::modules::prefetcher"><span class="n"><span class="pre">prefetcher</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4N8champsim7modules12cache_moduleE" title="champsim::modules::cache_module"><span class="n"><span class="pre">cache_module</span></span></a><span class="p"><span class="pre">&gt;</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules10prefetcherE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Interface for memory prefetcher modules.</p>
+<p>Prefetchers are attached to a cache (<a class="reference internal" href="#structchampsim_1_1modules_1_1cache__module"><span class="std std-ref">cache_module</span></a>). Implement the six virtual methods below and register with register_module to create a custom prefetcher. Use <a class="reference internal" href="#structchampsim_1_1modules_1_1prefetcher_1ab8cfe92604a101f7152668d3ecccf263"><span class="std std-ref">prefetch_line()</span></a> to issue prefetch requests. </p>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules10prefetcher21prefetcher_initializeEv">
+<span id="_CPPv3N8champsim7modules10prefetcher21prefetcher_initializeEv"></span><span id="_CPPv2N8champsim7modules10prefetcher21prefetcher_initializeEv"></span><span id="champsim::modules::prefetcher::prefetcher_initialize"></span><span class="target" id="structchampsim_1_1modules_1_1prefetcher_1a6734812aaf98a0c8936e208bfcf08c10"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">prefetcher_initialize</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules10prefetcher21prefetcher_initializeEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Called when the cache is initialized. Use this to set up dynamic data structures. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules10prefetcher24prefetcher_cache_operateEN8champsim7addressEN8champsim7addressEbb11access_type8uint32_t">
+<span id="_CPPv3N8champsim7modules10prefetcher24prefetcher_cache_operateEN8champsim7addressEN8champsim7addressEbb11access_type8uint32_t"></span><span id="_CPPv2N8champsim7modules10prefetcher24prefetcher_cache_operateEN8champsim7addressEN8champsim7addressEbb11access_type8uint32_t"></span><span id="champsim::modules::prefetcher::prefetcher_cache_operate__champsim::address.champsim::address.b.b.access_type.uint32_t"></span><span class="target" id="structchampsim_1_1modules_1_1prefetcher_1a743f8e4d55c092fb781499fe72d56918"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">uint32_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">prefetcher_cache_operate</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">addr</span></span>, <span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">ip</span></span>, <span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">cache_hit</span></span>, <span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">useful_prefetch</span></span>, <span class="n"><span class="pre">access_type</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">type</span></span>, <span class="n"><span class="pre">uint32_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">metadata_in</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules10prefetcher24prefetcher_cache_operateEN8champsim7addressEN8champsim7addressEbb11access_type8uint32_t" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Called when a tag check is performed in the cache.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>addr</strong> – The address of the packet. Includes offset bits for L1 caches; zero offset otherwise. If <code class="docutils literal notranslate"><span class="pre">virtual_prefetch</span></code> is true, this is a virtual address. </p></li>
+<li><p><strong>ip</strong> – The instruction pointer that initiated the demand. Zero for prefetches from other levels. </p></li>
+<li><p><strong>cache_hit</strong> – True if this tag check is a hit. </p></li>
+<li><p><strong>useful_prefetch</strong> – True if this tag check hit a prior prefetch. </p></li>
+<li><p><strong>type</strong> – The access type (LOAD, RFO, PREFETCH, WRITE, or TRANSLATION). </p></li>
+<li><p><strong>metadata_in</strong> – Metadata carried by the packet. </p></li>
 </ul>
-<p>The function should return metadata that will be stored alongside the block.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">uint32_t</span> <span class="n">CACHE</span><span class="p">::</span><span class="n">prefetcher_cache_fill</span><span class="p">(</span><span class="n">uint64_t</span> <span class="n">addr</span><span class="p">,</span> <span class="n">uint32_t</span> <span class="nb">set</span><span class="p">,</span> <span class="n">uint32_way</span><span class="p">,</span> <span class="n">uint8_t</span> <span class="n">prefetch</span><span class="p">,</span> <span class="n">uint32_t</span> <span class="n">metadata_in</span><span class="p">);</span>
-</pre></div>
-</div>
-<p>This function is called when a miss is filled in the cache. The parameters passed are:</p>
-<ul class="simple">
-<li><p>addr: the address of the packet. If this is the first-level cache, the offset bits are included. Otherwise, the offset bits are zero. If the cache was configured with <cite>“virtual_prefetch”: true</cite>, this address will be a virtual address. Otherwise, this is a physical address.</p></li>
-<li><p>set: the set that the fill occurred in</p></li>
-<li><p>way: the way that the fill occurred in, or <cite>this-&gt;NUM_WAY</cite> if a bypass occurred</p></li>
-<li><p>prefetch: if this tag check hit a prior prefetch, this value is true.</p></li>
-<li><p>metadata_in: the metadata carried along by the packet.</p></li>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Metadata to store alongside the block. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules10prefetcher21prefetcher_cache_fillEN8champsim7addressEllbN8champsim7addressE8uint32_t">
+<span id="_CPPv3N8champsim7modules10prefetcher21prefetcher_cache_fillEN8champsim7addressEllbN8champsim7addressE8uint32_t"></span><span id="_CPPv2N8champsim7modules10prefetcher21prefetcher_cache_fillEN8champsim7addressEllbN8champsim7addressE8uint32_t"></span><span id="champsim::modules::prefetcher::prefetcher_cache_fill__champsim::address.l.l.b.champsim::address.uint32_t"></span><span class="target" id="structchampsim_1_1modules_1_1prefetcher_1a018ed1e988dc38ce9b03faaa02285f48"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">uint32_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">prefetcher_cache_fill</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">addr</span></span>, <span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">set</span></span>, <span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">way</span></span>, <span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">prefetch</span></span>, <span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">evicted_addr</span></span>, <span class="n"><span class="pre">uint32_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">metadata_in</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules10prefetcher21prefetcher_cache_fillEN8champsim7addressEllbN8champsim7addressE8uint32_t" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Called when a miss is filled in the cache.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>addr</strong> – The address of the filled block (same addressing rules as prefetcher_cache_operate). </p></li>
+<li><p><strong>set</strong> – The cache set that the fill occurred in. </p></li>
+<li><p><strong>way</strong> – The cache way that the fill occurred in. </p></li>
+<li><p><strong>prefetch</strong> – True if the filled block was a prefetch. </p></li>
+<li><p><strong>evicted_addr</strong> – The address of the evicted block (default-constructed if bypass). </p></li>
+<li><p><strong>metadata_in</strong> – Metadata carried by the packet. </p></li>
 </ul>
-<p>The function should return metadata that will be stored alongside the block.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">void</span> <span class="n">CACHE</span><span class="p">::</span><span class="n">prefetcher_cycle_operate</span><span class="p">();</span>
-</pre></div>
-</div>
-<p>This function is called each cycle, after all other operation has completed.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">void</span> <span class="n">CACHE</span><span class="p">::</span><span class="n">prefetcher_final_stats</span><span class="p">();</span>
-</pre></div>
-</div>
-<p>This function is called at the end of the simulation and can be used to print statistics.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">void</span> <span class="n">CACHE</span><span class="p">::</span><span class="n">prefetcher_branch_operate</span><span class="p">(</span><span class="n">uint64_t</span> <span class="n">ip</span><span class="p">,</span> <span class="n">uint8_t</span> <span class="n">branch_type</span><span class="p">,</span> <span class="n">uint64_t</span> <span class="n">branch_target</span><span class="p">);</span>
-</pre></div>
-</div>
-<p>This function must be implemented by instruction prefetchers. The parameters passed are:</p>
-<ul class="simple">
-<li><p>ip: The instruction pointer of the branch</p></li>
-<li><p>branch_type: One of the following</p>
-<ul>
-<li><p><cite>BRANCH_DIRECT_JUMP</cite>: Direct non-call, unconditional branches, whose target is encoded in the instruction</p></li>
-<li><p><cite>BRANCH_INDIRECT</cite>: Indirect non-call, unconditional branches, whose target is stored in a register</p></li>
-<li><p><cite>BRANCH_CONDITIONAL</cite>: A direct conditional branch</p></li>
-<li><p><cite>BRANCH_DIRECT_CALL</cite>: A call to a procedure whose target is encoded in the instruction</p></li>
-<li><p><cite>BRANCH_INDIRECT_CALL</cite>: A call to a procedure whose target is stored in a register</p></li>
-<li><p><cite>BRANCH_RETURN</cite>: A return to a calling procedure</p></li>
-<li><p><cite>BRANCH_OTHER</cite>: If the branch type cannot be determined</p></li>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Metadata to store alongside the block. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules10prefetcher24prefetcher_cycle_operateEv">
+<span id="_CPPv3N8champsim7modules10prefetcher24prefetcher_cycle_operateEv"></span><span id="_CPPv2N8champsim7modules10prefetcher24prefetcher_cycle_operateEv"></span><span id="champsim::modules::prefetcher::prefetcher_cycle_operate"></span><span class="target" id="structchampsim_1_1modules_1_1prefetcher_1a88789e802ad4a29f0ec35b37d17285e3"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">prefetcher_cycle_operate</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules10prefetcher24prefetcher_cycle_operateEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Called each cycle after all other cache operations have completed. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules10prefetcher22prefetcher_final_statsEv">
+<span id="_CPPv3N8champsim7modules10prefetcher22prefetcher_final_statsEv"></span><span id="_CPPv2N8champsim7modules10prefetcher22prefetcher_final_statsEv"></span><span id="champsim::modules::prefetcher::prefetcher_final_stats"></span><span class="target" id="structchampsim_1_1modules_1_1prefetcher_1aaefd51658826f449e54dd3078089e023"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">prefetcher_final_stats</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules10prefetcher22prefetcher_final_statsEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Called at the end of the simulation. Can be used to print statistics. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules10prefetcher25prefetcher_branch_operateEN8champsim7addressE7uint8_tN8champsim7addressE">
+<span id="_CPPv3N8champsim7modules10prefetcher25prefetcher_branch_operateEN8champsim7addressE7uint8_tN8champsim7addressE"></span><span id="_CPPv2N8champsim7modules10prefetcher25prefetcher_branch_operateEN8champsim7addressE7uint8_tN8champsim7addressE"></span><span id="champsim::modules::prefetcher::prefetcher_branch_operate__champsim::address.uint8_t.champsim::address"></span><span class="target" id="structchampsim_1_1modules_1_1prefetcher_1ad3b9b1eeb037e7b572dc4bdf0ce1867b"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">prefetcher_branch_operate</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">ip</span></span>, <span class="n"><span class="pre">uint8_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">branch_type</span></span>, <span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">branch_target</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules10prefetcher25prefetcher_branch_operateEN8champsim7addressE7uint8_tN8champsim7addressE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Called on branch operations. Useful for instruction prefetchers.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ip</strong> – The instruction pointer of the branch. </p></li>
+<li><p><strong>branch_type</strong> – One of BRANCH_DIRECT_JUMP, BRANCH_INDIRECT, BRANCH_CONDITIONAL, BRANCH_DIRECT_CALL, BRANCH_INDIRECT_CALL, BRANCH_RETURN, or BRANCH_OTHER. </p></li>
+<li><p><strong>branch_target</strong> – The target address of the branch. </p></li>
 </ul>
-</li>
-<li><p>branch_target: The instruction pointer of the target</p></li>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules10prefetcher13prefetch_lineEN8champsim7addressEb8uint32_t">
+<span id="_CPPv3NK8champsim7modules10prefetcher13prefetch_lineEN8champsim7addressEb8uint32_t"></span><span id="_CPPv2NK8champsim7modules10prefetcher13prefetch_lineEN8champsim7addressEb8uint32_t"></span><span id="champsim::modules::prefetcher::prefetch_line__champsim::address.b.uint32_tC"></span><span class="target" id="structchampsim_1_1modules_1_1prefetcher_1ab8cfe92604a101f7152668d3ecccf263"></span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">prefetch_line</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">pf_addr</span></span>, <span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">fill_this_level</span></span>, <span class="n"><span class="pre">uint32_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">prefetch_metadata</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules10prefetcher13prefetch_lineEN8champsim7addressEb8uint32_t" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Issue a prefetch request into the parent cache.</p>
+<p>This delegates to the parent cache’s prefetch mechanism. You do not need to store your own parent pointer to use this method.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pf_addr</strong> – The address to prefetch. </p></li>
+<li><p><strong>fill_this_level</strong> – If true, fill this cache level; otherwise fill the next level down. </p></li>
+<li><p><strong>prefetch_metadata</strong> – Metadata to associate with the prefetch. </p></li>
 </ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>True if the prefetch was successfully enqueued. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules10prefetcher13prefetch_lineE8uint64_tb8uint32_t">
+<span id="_CPPv3NK8champsim7modules10prefetcher13prefetch_lineE8uint64_tb8uint32_t"></span><span id="_CPPv2NK8champsim7modules10prefetcher13prefetch_lineE8uint64_tb8uint32_t"></span><span id="champsim::modules::prefetcher::prefetch_line__uint64_t.b.uint32_tC"></span><span class="target" id="structchampsim_1_1modules_1_1prefetcher_1ae0c69c2746dbba566a850235e9a0339d"></span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">prefetch_line</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">uint64_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">pf_addr</span></span>, <span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">fill_this_level</span></span>, <span class="n"><span class="pre">uint32_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">prefetch_metadata</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules10prefetcher13prefetch_lineE8uint64_tb8uint32_t" title="Link to this definition">¶</a><br /></dt>
+<dd><p>This is an overloaded member function, provided for convenience. It differs from the above function only in what argument(s) it accepts. </p>
+</dd></dl>
+
+</div>
+</dd></dl>
+
 </section>
 <section id="replacement-policies">
 <h2>Replacement Policies<a class="headerlink" href="#replacement-policies" title="Link to this heading">¶</a></h2>
-<p>A replacement policy module must implement four functions.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">void</span> <span class="n">CACHE</span><span class="p">::</span><span class="n">initialize_replacement</span><span class="p">()</span>
-</pre></div>
+<p>A replacement policy module inherits from <code class="docutils literal notranslate"><span class="pre">champsim::modules::replacement</span></code> and must
+implement five functions.</p>
+<dl class="cpp struct">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules11replacementE">
+<span id="_CPPv3N8champsim7modules11replacementE"></span><span id="_CPPv2N8champsim7modules11replacementE"></span><span id="champsim::modules::replacement"></span><span class="target" id="structchampsim_1_1modules_1_1replacement"></span><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">replacement</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">modules</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">module_base</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4N8champsim7modules11replacementE" title="champsim::modules::replacement"><span class="n"><span class="pre">replacement</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4N8champsim7modules12cache_moduleE" title="champsim::modules::cache_module"><span class="n"><span class="pre">cache_module</span></span></a><span class="p"><span class="pre">&gt;</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules11replacementE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Interface for cache replacement policy modules.</p>
+<p>Replacement policies are attached to a cache (<a class="reference internal" href="#structchampsim_1_1modules_1_1cache__module"><span class="std std-ref">cache_module</span></a>). Implement the five virtual methods below and register with register_module to create a custom replacement policy. </p>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules11replacement22initialize_replacementEv">
+<span id="_CPPv3N8champsim7modules11replacement22initialize_replacementEv"></span><span id="_CPPv2N8champsim7modules11replacement22initialize_replacementEv"></span><span id="champsim::modules::replacement::initialize_replacement"></span><span class="target" id="structchampsim_1_1modules_1_1replacement_1a8cbddabd734680606d44a2b9d549b456"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">initialize_replacement</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules11replacement22initialize_replacementEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Called when the cache is initialized. Use this to set up dynamic data structures. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules11replacement11find_victimE8uint32_t8uint64_tlPKN8champsim11cache_blockEN8champsim7addressEN8champsim7addressE11access_type">
+<span id="_CPPv3N8champsim7modules11replacement11find_victimE8uint32_t8uint64_tlPKN8champsim11cache_blockEN8champsim7addressEN8champsim7addressE11access_type"></span><span id="_CPPv2N8champsim7modules11replacement11find_victimE8uint32_t8uint64_tlPKN8champsim11cache_blockEN8champsim7addressEN8champsim7addressE11access_type"></span><span id="champsim::modules::replacement::find_victim__uint32_t.uint64_t.l.champsim::cache_blockCP.champsim::address.champsim::address.access_type"></span><span class="target" id="structchampsim_1_1modules_1_1replacement_1afefebf6e1bf120ab0ae616486be45124"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">find_victim</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">uint32_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">triggering_cpu</span></span>, <span class="n"><span class="pre">uint64_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">instr_id</span></span>, <span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">set</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">cache_block</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">current_set</span></span>, <span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">ip</span></span>, <span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">full_addr</span></span>, <span class="n"><span class="pre">access_type</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">type</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules11replacement11find_victimE8uint32_t8uint64_tlPKN8champsim11cache_blockEN8champsim7addressEN8champsim7addressE11access_type" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Called when a cache miss requires eviction.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>triggering_cpu</strong> – The core index that initiated this access. </p></li>
+<li><p><strong>instr_id</strong> – Instruction count for examining program order of requests. </p></li>
+<li><p><strong>set</strong> – The cache set being accessed. </p></li>
+<li><p><strong>current_set</strong> – A pointer to the beginning of the set being accessed. </p></li>
+<li><p><strong>ip</strong> – The instruction that initiated the demand. Zero for prefetches from other levels. </p></li>
+<li><p><strong>full_addr</strong> – The address of the packet. </p></li>
+<li><p><strong>type</strong> – The access type (LOAD, RFO, PREFETCH, WRITE, or TRANSLATION). </p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The way index to evict, or the total number of ways to bypass. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules11replacement24update_replacement_stateE8uint32_tllN8champsim7addressEN8champsim7addressEN8champsim7addressE11access_typeb">
+<span id="_CPPv3N8champsim7modules11replacement24update_replacement_stateE8uint32_tllN8champsim7addressEN8champsim7addressEN8champsim7addressE11access_typeb"></span><span id="_CPPv2N8champsim7modules11replacement24update_replacement_stateE8uint32_tllN8champsim7addressEN8champsim7addressEN8champsim7addressE11access_typeb"></span><span id="champsim::modules::replacement::update_replacement_state__uint32_t.l.l.champsim::address.champsim::address.champsim::address.access_type.b"></span><span class="target" id="structchampsim_1_1modules_1_1replacement_1a3735a3e377696777f2ff85ce74ee6269"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">update_replacement_state</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">uint32_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">triggering_cpu</span></span>, <span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">set</span></span>, <span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">way</span></span>, <span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">full_addr</span></span>, <span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">ip</span></span>, <span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">victim_addr</span></span>, <span class="n"><span class="pre">access_type</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">type</span></span>, <span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">hit</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules11replacement24update_replacement_stateE8uint32_tllN8champsim7addressEN8champsim7addressEN8champsim7addressE11access_typeb" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Called when a tag check completes (on both hits and misses).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>triggering_cpu</strong> – The core index that initiated this access. </p></li>
+<li><p><strong>set</strong> – The cache set. </p></li>
+<li><p><strong>way</strong> – The cache way. </p></li>
+<li><p><strong>full_addr</strong> – The address of the packet. </p></li>
+<li><p><strong>ip</strong> – The instruction that initiated the demand. </p></li>
+<li><p><strong>victim_addr</strong> – The address of the evicted block (zero on hits). </p></li>
+<li><p><strong>type</strong> – The access type. </p></li>
+<li><p><strong>hit</strong> – True if the packet hit the cache. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules11replacement22replacement_cache_fillE8uint32_tllN8champsim7addressEN8champsim7addressEN8champsim7addressE11access_type">
+<span id="_CPPv3N8champsim7modules11replacement22replacement_cache_fillE8uint32_tllN8champsim7addressEN8champsim7addressEN8champsim7addressE11access_type"></span><span id="_CPPv2N8champsim7modules11replacement22replacement_cache_fillE8uint32_tllN8champsim7addressEN8champsim7addressEN8champsim7addressE11access_type"></span><span id="champsim::modules::replacement::replacement_cache_fill__uint32_t.l.l.champsim::address.champsim::address.champsim::address.access_type"></span><span class="target" id="structchampsim_1_1modules_1_1replacement_1ad455016f688c1b7f2d9e23a8fc078233"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">replacement_cache_fill</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">uint32_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">triggering_cpu</span></span>, <span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">set</span></span>, <span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">way</span></span>, <span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">full_addr</span></span>, <span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">ip</span></span>, <span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">victim_addr</span></span>, <span class="n"><span class="pre">access_type</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">type</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules11replacement22replacement_cache_fillE8uint32_tllN8champsim7addressEN8champsim7addressEN8champsim7addressE11access_type" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Called when a block is filled in the cache.</p>
+<p>This is called with the same timing as <a class="reference internal" href="#structchampsim_1_1modules_1_1replacement_1afefebf6e1bf120ab0ae616486be45124"><span class="std std-ref">find_victim()</span></a>, and is additionally called when filling an invalid way.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>triggering_cpu</strong> – The core index that initiated this fill. </p></li>
+<li><p><strong>set</strong> – The cache set. </p></li>
+<li><p><strong>way</strong> – The cache way. </p></li>
+<li><p><strong>full_addr</strong> – The address of the filled block. </p></li>
+<li><p><strong>ip</strong> – The instruction that initiated the demand. </p></li>
+<li><p><strong>victim_addr</strong> – The address of the evicted block (zero on hits). </p></li>
+<li><p><strong>type</strong> – The access type. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules11replacement23replacement_final_statsEv">
+<span id="_CPPv3N8champsim7modules11replacement23replacement_final_statsEv"></span><span id="_CPPv2N8champsim7modules11replacement23replacement_final_statsEv"></span><span id="champsim::modules::replacement::replacement_final_stats"></span><span class="target" id="structchampsim_1_1modules_1_1replacement_1a29eeb6a004f8f461937b1460c73d3311"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">replacement_final_stats</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules11replacement23replacement_final_statsEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Called at the end of the simulation. Can be used to print statistics. </p>
+</dd></dl>
+
 </div>
-<p>This function is called when the cache is initialized. You can use it to initialize elements of dynamic structures, such as <cite>std::vector</cite> or <cite>std::map</cite>.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">uint32_t</span> <span class="n">CACHE</span><span class="p">::</span><span class="n">find_victim</span><span class="p">(</span><span class="n">uint32_t</span> <span class="n">triggering_cpu</span><span class="p">,</span> <span class="n">uint64_t</span> <span class="n">instr_id</span><span class="p">,</span> <span class="n">uint32_t</span> <span class="nb">set</span><span class="p">,</span> <span class="n">const</span> <span class="n">BLOCK</span><span class="o">*</span> <span class="n">current_set</span><span class="p">,</span> <span class="n">uint64_t</span> <span class="n">ip</span><span class="p">,</span> <span class="n">uint64_t</span> <span class="n">addr</span><span class="p">,</span> <span class="n">uint32_t</span> <span class="nb">type</span><span class="p">);</span>
-</pre></div>
+</dd></dl>
+
+</section>
+<section id="cache-module-interface">
+<h2>Cache Module Interface<a class="headerlink" href="#cache-module-interface" title="Link to this heading">¶</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">cache_module</span></code> interface defines the contract that caches fulfill. Prefetchers
+and replacement policies can query their parent cache through this interface, for
+example to read queue occupancy or cache geometry.</p>
+<dl class="cpp struct">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules12cache_moduleE">
+<span id="_CPPv3N8champsim7modules12cache_moduleE"></span><span id="_CPPv2N8champsim7modules12cache_moduleE"></span><span id="champsim::modules::cache_module"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module"></span><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">cache_module</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">modules</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">module_base</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4N8champsim7modules12cache_moduleE" title="champsim::modules::cache_module"><span class="n"><span class="pre">cache_module</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="n"><span class="pre">environment_module</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">operable</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules12cache_moduleE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Interface for cache modules.</p>
+<p>The default implementation is CACHE. Prefetchers and replacement policies are attached to a <a class="reference internal" href="#structchampsim_1_1modules_1_1cache__module"><span class="std std-ref">cache_module</span></a>. Module authors can query cache geometry and queue occupancy through this interface. </p>
+<p>Subclassed by CACHE</p>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-types">Public Types</p>
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules12cache_module10stats_typeE">
+<span id="_CPPv3N8champsim7modules12cache_module10stats_typeE"></span><span id="_CPPv2N8champsim7modules12cache_module10stats_typeE"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1addc65cdbdea026e47e3f6ef1c3424c16"></span><span class="k"><span class="pre">using</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">stats_type</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">cache_stats</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules12cache_module10stats_typeE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>The stats type returned by <a class="reference internal" href="#structchampsim_1_1modules_1_1cache__module_1aac9fdbbe3e9bdf28e77ab914476b47fb"><span class="std std-ref">get_sim_stats()</span></a> and <a class="reference internal" href="#structchampsim_1_1modules_1_1cache__module_1ad12ff9a000547b06d5e1671fcee40812"><span class="std std-ref">get_roi_stats()</span></a>. </p>
+</dd></dl>
+
 </div>
-<p>This function is called when a tag is checked in the cache. The parameters passed are:</p>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules12cache_module13get_sim_statsEv">
+<span id="_CPPv3NK8champsim7modules12cache_module13get_sim_statsEv"></span><span id="_CPPv2NK8champsim7modules12cache_module13get_sim_statsEv"></span><span id="champsim::modules::cache_module::get_sim_statsC"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1aac9fdbbe3e9bdf28e77ab914476b47fb"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4N8champsim7modules12cache_module10stats_typeE" title="champsim::modules::cache_module::stats_type"><span class="n"><span class="pre">stats_type</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_sim_stats</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules12cache_module13get_sim_statsEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return simulation-wide statistics for this cache. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules12cache_module13get_roi_statsEv">
+<span id="_CPPv3NK8champsim7modules12cache_module13get_roi_statsEv"></span><span id="_CPPv2NK8champsim7modules12cache_module13get_roi_statsEv"></span><span id="champsim::modules::cache_module::get_roi_statsC"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1ad12ff9a000547b06d5e1671fcee40812"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4N8champsim7modules12cache_module10stats_typeE" title="champsim::modules::cache_module::stats_type"><span class="n"><span class="pre">stats_type</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_roi_stats</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules12cache_module13get_roi_statsEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return region-of-interest statistics for this cache. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules12cache_module19is_virtual_prefetchEv">
+<span id="_CPPv3NK8champsim7modules12cache_module19is_virtual_prefetchEv"></span><span id="_CPPv2NK8champsim7modules12cache_module19is_virtual_prefetchEv"></span><span id="champsim::modules::cache_module::is_virtual_prefetchC"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1a20181d88cf05a1a3576d1fe31503cb73"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">is_virtual_prefetch</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules12cache_module19is_virtual_prefetchEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return true if this cache uses virtual addresses for prefetching. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules12cache_module13prefetch_lineEN8champsim7addressEb8uint32_t">
+<span id="_CPPv3N8champsim7modules12cache_module13prefetch_lineEN8champsim7addressEb8uint32_t"></span><span id="_CPPv2N8champsim7modules12cache_module13prefetch_lineEN8champsim7addressEb8uint32_t"></span><span id="champsim::modules::cache_module::prefetch_line__champsim::address.b.uint32_t"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1a4392f3f02646d8f886e79168ab521efd"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">prefetch_line</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">pf_addr</span></span>, <span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">fill_this_level</span></span>, <span class="n"><span class="pre">uint32_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">prefetch_metadata</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules12cache_module13prefetch_lineEN8champsim7addressEb8uint32_t" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Issue a prefetch into this cache.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pf_addr</strong> – The address to prefetch. </p></li>
+<li><p><strong>fill_this_level</strong> – If true, fill this cache level; otherwise fill the next level. </p></li>
+<li><p><strong>prefetch_metadata</strong> – Metadata to associate with the prefetch. </p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>True if the prefetch was successfully enqueued. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules12cache_module16invalidate_entryEN8champsim7addressE">
+<span id="_CPPv3N8champsim7modules12cache_module16invalidate_entryEN8champsim7addressE"></span><span id="_CPPv2N8champsim7modules12cache_module16invalidate_entryEN8champsim7addressE"></span><span id="champsim::modules::cache_module::invalidate_entry__champsim::address"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1a24e5f735084596b0d28cdee4ba25cdf4"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">invalidate_entry</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Address-operations.html#_CPPv4N8champsim7addressE" title="champsim::address"><span class="n"><span class="pre">address</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">inval_addr</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules12cache_module16invalidate_entryEN8champsim7addressE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Invalidate the cache line at the given address. Returns the way index, or -1. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules12cache_module18get_mshr_occupancyEv">
+<span id="_CPPv3NK8champsim7modules12cache_module18get_mshr_occupancyEv"></span><span id="_CPPv2NK8champsim7modules12cache_module18get_mshr_occupancyEv"></span><span id="champsim::modules::cache_module::get_mshr_occupancyC"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1acdde2526a207ec46722829ba23cb0f29"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_mshr_occupancy</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules12cache_module18get_mshr_occupancyEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return the current number of occupied MSHR entries. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules12cache_module13get_mshr_sizeEv">
+<span id="_CPPv3NK8champsim7modules12cache_module13get_mshr_sizeEv"></span><span id="_CPPv2NK8champsim7modules12cache_module13get_mshr_sizeEv"></span><span id="champsim::modules::cache_module::get_mshr_sizeC"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1a1153a4f423e338873a69444a97d179e3"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_mshr_size</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules12cache_module13get_mshr_sizeEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return the total MSHR capacity. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules12cache_module24get_mshr_occupancy_ratioEv">
+<span id="_CPPv3NK8champsim7modules12cache_module24get_mshr_occupancy_ratioEv"></span><span id="_CPPv2NK8champsim7modules12cache_module24get_mshr_occupancy_ratioEv"></span><span id="champsim::modules::cache_module::get_mshr_occupancy_ratioC"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1a2c1df997db797bc931c2edc564c9f0d6"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_mshr_occupancy_ratio</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules12cache_module24get_mshr_occupancy_ratioEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return the MSHR occupancy as a ratio in [0, 1]. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules12cache_module16get_rq_occupancyEv">
+<span id="_CPPv3NK8champsim7modules12cache_module16get_rq_occupancyEv"></span><span id="_CPPv2NK8champsim7modules12cache_module16get_rq_occupancyEv"></span><span id="champsim::modules::cache_module::get_rq_occupancyC"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1ab18e3c9ef0617a572277e9ca882af097"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_rq_occupancy</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules12cache_module16get_rq_occupancyEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return per-channel read queue occupancy. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules12cache_module11get_rq_sizeEv">
+<span id="_CPPv3NK8champsim7modules12cache_module11get_rq_sizeEv"></span><span id="_CPPv2NK8champsim7modules12cache_module11get_rq_sizeEv"></span><span id="champsim::modules::cache_module::get_rq_sizeC"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1a5291db7c884c379fdc9bee6d64277f37"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_rq_size</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules12cache_module11get_rq_sizeEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return per-channel read queue capacity. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules12cache_module22get_rq_occupancy_ratioEv">
+<span id="_CPPv3NK8champsim7modules12cache_module22get_rq_occupancy_ratioEv"></span><span id="_CPPv2NK8champsim7modules12cache_module22get_rq_occupancy_ratioEv"></span><span id="champsim::modules::cache_module::get_rq_occupancy_ratioC"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1aa2df91f01bea7246f57a4a968fd73034"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">double</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_rq_occupancy_ratio</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules12cache_module22get_rq_occupancy_ratioEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return per-channel read queue occupancy as a ratio in [0, 1]. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules12cache_module16get_wq_occupancyEv">
+<span id="_CPPv3NK8champsim7modules12cache_module16get_wq_occupancyEv"></span><span id="_CPPv2NK8champsim7modules12cache_module16get_wq_occupancyEv"></span><span id="champsim::modules::cache_module::get_wq_occupancyC"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1ab1e67255f5372219502de69e783771f1"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_wq_occupancy</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules12cache_module16get_wq_occupancyEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return per-channel write queue occupancy. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules12cache_module11get_wq_sizeEv">
+<span id="_CPPv3NK8champsim7modules12cache_module11get_wq_sizeEv"></span><span id="_CPPv2NK8champsim7modules12cache_module11get_wq_sizeEv"></span><span id="champsim::modules::cache_module::get_wq_sizeC"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1aba2965097f59b58d677c867bcf1f84bc"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_wq_size</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules12cache_module11get_wq_sizeEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return per-channel write queue capacity. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules12cache_module22get_wq_occupancy_ratioEv">
+<span id="_CPPv3NK8champsim7modules12cache_module22get_wq_occupancy_ratioEv"></span><span id="_CPPv2NK8champsim7modules12cache_module22get_wq_occupancy_ratioEv"></span><span id="champsim::modules::cache_module::get_wq_occupancy_ratioC"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1a7338b2902992b86c112fb0227cce1716"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">double</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_wq_occupancy_ratio</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules12cache_module22get_wq_occupancy_ratioEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return per-channel write queue occupancy as a ratio in [0, 1]. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules12cache_module16get_pq_occupancyEv">
+<span id="_CPPv3NK8champsim7modules12cache_module16get_pq_occupancyEv"></span><span id="_CPPv2NK8champsim7modules12cache_module16get_pq_occupancyEv"></span><span id="champsim::modules::cache_module::get_pq_occupancyC"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1ad9b5361e82885523ebc715661abe10fe"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_pq_occupancy</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules12cache_module16get_pq_occupancyEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return per-channel prefetch queue occupancy. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules12cache_module11get_pq_sizeEv">
+<span id="_CPPv3NK8champsim7modules12cache_module11get_pq_sizeEv"></span><span id="_CPPv2NK8champsim7modules12cache_module11get_pq_sizeEv"></span><span id="champsim::modules::cache_module::get_pq_sizeC"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1a72572328794387479364853f34a2293f"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_pq_size</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules12cache_module11get_pq_sizeEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return per-channel prefetch queue capacity. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules12cache_module22get_pq_occupancy_ratioEv">
+<span id="_CPPv3NK8champsim7modules12cache_module22get_pq_occupancy_ratioEv"></span><span id="_CPPv2NK8champsim7modules12cache_module22get_pq_occupancy_ratioEv"></span><span id="champsim::modules::cache_module::get_pq_occupancy_ratioC"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1af28c9760d1b31ab03a66c3bb14de4d0c"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">double</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_pq_occupancy_ratio</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules12cache_module22get_pq_occupancy_ratioEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return per-channel prefetch queue occupancy as a ratio in [0, 1]. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules12cache_module8num_setsEv">
+<span id="_CPPv3NK8champsim7modules12cache_module8num_setsEv"></span><span id="_CPPv2NK8champsim7modules12cache_module8num_setsEv"></span><span id="champsim::modules::cache_module::num_setsC"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1aabff34fd6f0f6c1d0d48d0582084e195"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">num_sets</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules12cache_module8num_setsEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return the number of sets in this cache. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules12cache_module8num_waysEv">
+<span id="_CPPv3NK8champsim7modules12cache_module8num_waysEv"></span><span id="_CPPv2NK8champsim7modules12cache_module8num_waysEv"></span><span id="champsim::modules::cache_module::num_waysC"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1a870debf20f64d224c3b4eb1ed85ee141"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">num_ways</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules12cache_module8num_waysEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return the number of ways in this cache. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules12cache_module15get_offset_bitsEv">
+<span id="_CPPv3NK8champsim7modules12cache_module15get_offset_bitsEv"></span><span id="_CPPv2NK8champsim7modules12cache_module15get_offset_bitsEv"></span><span id="champsim::modules::cache_module::get_offset_bitsC"></span><span class="target" id="structchampsim_1_1modules_1_1cache__module_1a652610006061ecdc96b18bddc5ec2e91"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Byte-sizes.html#_CPPv4N8champsim4data4bitsE" title="champsim::data::bits"><span class="n"><span class="pre">bits</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_offset_bits</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules12cache_module15get_offset_bitsEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return the number of offset bits (log2 of block size). </p>
+</dd></dl>
+
+</div>
+</dd></dl>
+
+</section>
+<section id="core-module-interface">
+<h2>Core Module Interface<a class="headerlink" href="#core-module-interface" title="Link to this heading">¶</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">core_module</span></code> interface defines the contract that CPU cores fulfill. Branch
+predictors and BTBs are attached to a core_module.</p>
+<dl class="cpp struct">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules11core_moduleE">
+<span id="_CPPv3N8champsim7modules11core_moduleE"></span><span id="_CPPv2N8champsim7modules11core_moduleE"></span><span id="champsim::modules::core_module"></span><span class="target" id="structchampsim_1_1modules_1_1core__module"></span><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">core_module</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">modules</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">module_base</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4N8champsim7modules11core_moduleE" title="champsim::modules::core_module"><span class="n"><span class="pre">core_module</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="n"><span class="pre">environment_module</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">operable</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">modules</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">source_consumer</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules11core_moduleE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Interface for CPU core modules.</p>
+<p>The default implementation is O3_CPU. Branch predictors and BTBs are attached to a <a class="reference internal" href="#structchampsim_1_1modules_1_1core__module"><span class="std std-ref">core_module</span></a>. </p>
+<p>Subclassed by O3_CPU</p>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-types">Public Types</p>
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules11core_module10stats_typeE">
+<span id="_CPPv3N8champsim7modules11core_module10stats_typeE"></span><span id="_CPPv2N8champsim7modules11core_module10stats_typeE"></span><span class="target" id="structchampsim_1_1modules_1_1core__module_1a999fdefa97d11591f6883236636bf4aa"></span><span class="k"><span class="pre">using</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">stats_type</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">cpu_stats</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules11core_module10stats_typeE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>The stats type returned by <a class="reference internal" href="#structchampsim_1_1modules_1_1core__module_1abdda0cbc04b472906729c418ea543782"><span class="std std-ref">get_sim_stats()</span></a> and <a class="reference internal" href="#structchampsim_1_1modules_1_1core__module_1a2d1c9111e60b61f5ebb23bb2fa162542"><span class="std std-ref">get_roi_stats()</span></a>. </p>
+</dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules11core_module9sim_instrEv">
+<span id="_CPPv3NK8champsim7modules11core_module9sim_instrEv"></span><span id="_CPPv2NK8champsim7modules11core_module9sim_instrEv"></span><span id="champsim::modules::core_module::sim_instrC"></span><span class="target" id="structchampsim_1_1modules_1_1core__module_1ad68fc6457467237d6097bb17cd0c1302"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">uint64_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">sim_instr</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules11core_module9sim_instrEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return the number of instructions simulated so far. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules11core_module11get_cpu_numEv">
+<span id="_CPPv3NK8champsim7modules11core_module11get_cpu_numEv"></span><span id="_CPPv2NK8champsim7modules11core_module11get_cpu_numEv"></span><span id="champsim::modules::core_module::get_cpu_numC"></span><span class="target" id="structchampsim_1_1modules_1_1core__module_1ab1664c48a8aedb2a7d44a8ef5b54da6a"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">uint8_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_cpu_num</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules11core_module11get_cpu_numEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return this core’s CPU index. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules11core_module9sim_cycleEv">
+<span id="_CPPv3NK8champsim7modules11core_module9sim_cycleEv"></span><span id="_CPPv2NK8champsim7modules11core_module9sim_cycleEv"></span><span id="champsim::modules::core_module::sim_cycleC"></span><span class="target" id="structchampsim_1_1modules_1_1core__module_1a9c84d5a5f39b5fd1941255481781025d"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">uint64_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">sim_cycle</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules11core_module9sim_cycleEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return the number of cycles simulated so far. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules11core_module13get_sim_statsEv">
+<span id="_CPPv3NK8champsim7modules11core_module13get_sim_statsEv"></span><span id="_CPPv2NK8champsim7modules11core_module13get_sim_statsEv"></span><span id="champsim::modules::core_module::get_sim_statsC"></span><span class="target" id="structchampsim_1_1modules_1_1core__module_1abdda0cbc04b472906729c418ea543782"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4N8champsim7modules11core_module10stats_typeE" title="champsim::modules::core_module::stats_type"><span class="n"><span class="pre">stats_type</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_sim_stats</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules11core_module13get_sim_statsEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return simulation-wide statistics for this core. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules11core_module13get_roi_statsEv">
+<span id="_CPPv3NK8champsim7modules11core_module13get_roi_statsEv"></span><span id="_CPPv2NK8champsim7modules11core_module13get_roi_statsEv"></span><span id="champsim::modules::core_module::get_roi_statsC"></span><span class="target" id="structchampsim_1_1modules_1_1core__module_1a2d1c9111e60b61f5ebb23bb2fa162542"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4N8champsim7modules11core_module10stats_typeE" title="champsim::modules::core_module::stats_type"><span class="n"><span class="pre">stats_type</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_roi_stats</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules11core_module13get_roi_statsEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return region-of-interest statistics for this core. </p>
+</dd></dl>
+
+</div>
+</dd></dl>
+
+</section>
+<section id="memory-controller-interface">
+<h2>Memory Controller Interface<a class="headerlink" href="#memory-controller-interface" title="Link to this heading">¶</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">memory_controller_module</span></code> interface defines the contract that DRAM controllers
+fulfill. Stats can be retrieved per channel.</p>
+<dl class="cpp struct">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules24memory_controller_moduleE">
+<span id="_CPPv3N8champsim7modules24memory_controller_moduleE"></span><span id="_CPPv2N8champsim7modules24memory_controller_moduleE"></span><span id="champsim::modules::memory_controller_module"></span><span class="target" id="structchampsim_1_1modules_1_1memory__controller__module"></span><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">memory_controller_module</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">modules</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">module_base</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4N8champsim7modules24memory_controller_moduleE" title="champsim::modules::memory_controller_module"><span class="n"><span class="pre">memory_controller_module</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="n"><span class="pre">environment_module</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">operable</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules24memory_controller_moduleE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Interface for DRAM memory controller modules.</p>
+<p>The default implementation is MEMORY_CONTROLLER. Stats can be retrieved per channel. </p>
+<p>Subclassed by MEMORY_CONTROLLER</p>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-types">Public Types</p>
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules24memory_controller_module10stats_typeE">
+<span id="_CPPv3N8champsim7modules24memory_controller_module10stats_typeE"></span><span id="_CPPv2N8champsim7modules24memory_controller_module10stats_typeE"></span><span class="target" id="structchampsim_1_1modules_1_1memory__controller__module_1aba063238ab69bcfcc359355161c38730"></span><span class="k"><span class="pre">using</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">stats_type</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">dram_stats</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules24memory_controller_module10stats_typeE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>The stats type returned by <a class="reference internal" href="#structchampsim_1_1modules_1_1memory__controller__module_1a73500dbe265d073ef8155ac98479a498"><span class="std std-ref">get_sim_stats()</span></a> and <a class="reference internal" href="#structchampsim_1_1modules_1_1memory__controller__module_1acce3cec11c758d45ffa7aa079e2a190d"><span class="std std-ref">get_roi_stats()</span></a>. </p>
+</dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules24memory_controller_module16get_num_channelsEv">
+<span id="_CPPv3NK8champsim7modules24memory_controller_module16get_num_channelsEv"></span><span id="_CPPv2NK8champsim7modules24memory_controller_module16get_num_channelsEv"></span><span id="champsim::modules::memory_controller_module::get_num_channelsC"></span><span class="target" id="structchampsim_1_1modules_1_1memory__controller__module_1a5002ceabbf4eb92d7919364289550810"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_num_channels</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules24memory_controller_module16get_num_channelsEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return the number of DRAM channels. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules24memory_controller_module13get_sim_statsENSt6size_tE">
+<span id="_CPPv3NK8champsim7modules24memory_controller_module13get_sim_statsENSt6size_tE"></span><span id="_CPPv2NK8champsim7modules24memory_controller_module13get_sim_statsENSt6size_tE"></span><span id="champsim::modules::memory_controller_module::get_sim_stats__std::sC"></span><span class="target" id="structchampsim_1_1modules_1_1memory__controller__module_1a73500dbe265d073ef8155ac98479a498"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4N8champsim7modules24memory_controller_module10stats_typeE" title="champsim::modules::memory_controller_module::stats_type"><span class="n"><span class="pre">stats_type</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_sim_stats</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">channel_no</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules24memory_controller_module13get_sim_statsENSt6size_tE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return simulation-wide statistics for the given channel. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules24memory_controller_module13get_roi_statsENSt6size_tE">
+<span id="_CPPv3NK8champsim7modules24memory_controller_module13get_roi_statsENSt6size_tE"></span><span id="_CPPv2NK8champsim7modules24memory_controller_module13get_roi_statsENSt6size_tE"></span><span id="champsim::modules::memory_controller_module::get_roi_stats__std::sC"></span><span class="target" id="structchampsim_1_1modules_1_1memory__controller__module_1acce3cec11c758d45ffa7aa079e2a190d"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4N8champsim7modules24memory_controller_module10stats_typeE" title="champsim::modules::memory_controller_module::stats_type"><span class="n"><span class="pre">stats_type</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_roi_stats</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">channel_no</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules24memory_controller_module13get_roi_statsENSt6size_tE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return region-of-interest statistics for the given channel. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim7modules24memory_controller_module4sizeEv">
+<span id="_CPPv3NK8champsim7modules24memory_controller_module4sizeEv"></span><span id="_CPPv2NK8champsim7modules24memory_controller_module4sizeEv"></span><span id="champsim::modules::memory_controller_module::sizeC"></span><span class="target" id="structchampsim_1_1modules_1_1memory__controller__module_1a6e2f415106d95dafa120c2ffafa09708"></span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Byte-sizes.html#_CPPv4N8champsim4data5bytesE" title="champsim::data::bytes"><span class="n"><span class="pre">bytes</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">size</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><a class="headerlink" href="#_CPPv4NK8champsim7modules24memory_controller_module4sizeEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return the total DRAM size. </p>
+</dd></dl>
+
+</div>
+</dd></dl>
+
+</section>
+<section id="listener-interface">
+<h2>Listener Interface<a class="headerlink" href="#listener-interface" title="Link to this heading">¶</a></h2>
+<p>A <code class="docutils literal notranslate"><span class="pre">listener</span></code> observes simulation events without affecting timing. Every hook is a
+no-op by default, so an implementation overrides only the events it needs:</p>
 <ul class="simple">
-<li><p>triggering_cpu: the core index that initiated this fill</p></li>
-<li><p>instr_id: an instruction count that can be used to examine the program order of requests.</p></li>
-<li><p>set: the set that the fill occurred in.</p></li>
-<li><p>current_set: a pointer to the beginning of the set being accessed.</p></li>
-<li><p>ip: the address of the instruction that initiated the demand. If the packet is a prefetch from another level, this value will be 0.</p></li>
-<li><p>addr: the address of the packet. If this is the first-level cache, the offset bits are included. Otherwise, the offset bits are zero. If the cache was configured with <cite>“virtual_prefetch”: true</cite>, this address will be a virtual address. Otherwise, this is a physical address.</p></li>
-<li><p>type: the result of <cite>static_cast&lt;std::underlying_type_t&lt;access_type&gt;&gt;(v)</cite> for v in:</p>
-<ul>
-<li><p><cite>access_type::LOAD</cite></p></li>
-<li><p><cite>access_type::RFO</cite></p></li>
-<li><p><cite>access_type::PREFETCH</cite></p></li>
-<li><p><cite>access_type::WRITE</cite></p></li>
-<li><p><cite>access_type::TRANSLATION</cite></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">begin_phase(is_warmup)</span></code> — called at the start of each phase.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">end_phase(is_warmup)</span></code> — called at the end of each phase.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">retire(cpu,</span> <span class="pre">begin,</span> <span class="pre">end,</span> <span class="pre">cycle)</span></code> — called each cycle a core retires instructions,
+with <code class="docutils literal notranslate"><span class="pre">[begin,</span> <span class="pre">end)</span></code> spanning the retiring ROB entries.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">retire_cycle(cpu,</span> <span class="pre">cycle,</span> <span class="pre">num_retired,</span> <span class="pre">rob,</span> <span class="pre">recovering_from_mispredict)</span></code> — called every
+core cycle at the retire stage with the ROB as it stands at the start of the cycle.
+<code class="docutils literal notranslate"><span class="pre">recovering_from_mispredict</span></code> is true from a misprediction flush until the next
+correct-path instruction is dispatched into the ROB.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">dispatch_cycle(cpu,</span> <span class="pre">cycle,</span> <span class="pre">num_dispatched,</span> <span class="pre">num_wp_dispatched,</span> <span class="pre">dispatch_buffer,</span> <span class="pre">backend_full,</span> <span class="pre">recovering_from_mispredict)</span></code>
+— called every core cycle after dispatch. <code class="docutils literal notranslate"><span class="pre">dispatch_buffer</span></code> holds the instructions still
+waiting to dispatch; <code class="docutils literal notranslate"><span class="pre">backend_full</span></code> is true when its head doesn’t fit in the ROB, LQ, or SQ.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">issue_cycle(cpu,</span> <span class="pre">cycle,</span> <span class="pre">num_issued,</span> <span class="pre">num_wp_issued,</span> <span class="pre">rob,</span> <span class="pre">backend_full,</span> <span class="pre">recovering_from_mispredict)</span></code>
+— called every core cycle after instructions are issued to execute, with the ROB afterward.</p></li>
 </ul>
-</li>
-</ul>
-<p>The function should return the way index that should be evicted, or <cite>this-&gt;NUM_WAY</cite> to indicate that a bypass should occur.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">void</span> <span class="n">CACHE</span><span class="p">::</span><span class="n">update_replacement_state</span><span class="p">(</span><span class="n">uint32_t</span> <span class="n">triggering_cpu</span><span class="p">,</span> <span class="n">uint32_t</span> <span class="nb">set</span><span class="p">,</span> <span class="n">uint32_t</span> <span class="n">way</span><span class="p">,</span> <span class="n">uint64_t</span> <span class="n">addr</span><span class="p">,</span> <span class="n">uint64_t</span> <span class="n">ip</span><span class="p">,</span> <span class="n">uint64_t</span> <span class="n">victim_addr</span><span class="p">,</span> <span class="n">uint8_t</span> <span class="n">hit</span><span class="p">);</span>
+<p>Register an implementation like any other module:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">champsim</span><span class="p">::</span><span class="n">modules</span><span class="p">::</span><span class="n">listener</span><span class="p">::</span><span class="n">register_module</span><span class="o">&lt;</span><span class="n">my_listener</span><span class="o">&gt;</span> <span class="n">reg</span><span class="p">(</span><span class="s2">&quot;MY_LISTENER&quot;</span><span class="p">);</span>
 </pre></div>
 </div>
-<p>This function is called when a hit occurs or a miss is filled in the cache. The parameters passed are:</p>
+<p>A run’s listeners come from two places:</p>
 <ul class="simple">
-<li><p>triggering_cpu: the core index that initiated this fill</p></li>
-<li><p>set: the set that the fill occurred in.</p></li>
-<li><p>way: the way that the fill occurred in.</p></li>
-<li><p>addr: the address of the packet. If this is the first-level cache, the offset bits are included. Otherwise, the offset bits are zero. If the cache was configured with <cite>“virtual_prefetch”: true</cite>, this address will be a virtual address. Otherwise, this is a physical address.</p></li>
-<li><p>ip: the address of the instruction that initiated the demand. If the packet is a prefetch from another level, this value will be 0.</p></li>
-<li><p>victim_addr: the address of the evicted block, if this is a miss. If this is a hit, the value is 0.</p></li>
-<li><p>type: the result of <cite>static_cast&lt;std::underlying_type_t&lt;access_type&gt;&gt;(v)</cite> for v in:</p>
-<ul>
-<li><p><cite>access_type::LOAD</cite></p></li>
-<li><p><cite>access_type::RFO</cite></p></li>
-<li><p><cite>access_type::PREFETCH</cite></p></li>
-<li><p><cite>access_type::WRITE</cite></p></li>
-<li><p><cite>access_type::TRANSLATION</cite></p></li>
+<li><p>top-level <code class="docutils literal notranslate"><span class="pre">&quot;module&quot;:</span> <span class="pre">&quot;listener&quot;</span></code> children of an explicit config, e.g.
+<code class="docutils literal notranslate"><span class="pre">{&quot;name&quot;:</span> <span class="pre">&quot;hb&quot;,</span> <span class="pre">&quot;module&quot;:</span> <span class="pre">&quot;listener&quot;,</span> <span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;HEARTBEAT&quot;,</span> <span class="pre">&quot;heartbeat_frequency&quot;:</span> <span class="pre">1000000}</span></code>;</p></li>
+<li><p>a default <code class="docutils literal notranslate"><span class="pre">HEARTBEAT</span></code> listener, added when no heartbeat is attached yet. It prints every
+<code class="docutils literal notranslate"><span class="pre">heartbeat_frequency</span></code> retired instructions, taken from the config’s root-level
+<code class="docutils literal notranslate"><span class="pre">heartbeat_frequency</span></code> (default 10000000).</p></li>
 </ul>
-</li>
+<p><code class="docutils literal notranslate"><span class="pre">--hide-heartbeat</span></code> removes every <code class="docutils literal notranslate"><span class="pre">HEARTBEAT</span></code> listener.</p>
+<p>ChampSim ships these listener models:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">HEARTBEAT</span></code> — prints each core’s progress every <code class="docutils literal notranslate"><span class="pre">heartbeat_frequency</span></code> retired instructions.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">RETIRE_CPI_STACK</span></code> — a top-level CPI stack at the retire stage, counted in slots: each
+core cycle has as many slots as the retire width. A slot that retires an instruction is
+<em>retiring</em>; a cycle’s unused slots all go to one category, decided by the oldest instruction
+that didn’t retire: <em>mis-speculating</em> (the ROB is empty while the core recovers from a
+misprediction), <em>stalled</em> (the correct-path ROB head hasn’t completed), or <em>drained</em> (the ROB is empty for any other reason, i.e.
+the front end isn’t supplying instructions). The counts are printed per core at the end of
+each non-warmup phase. Enable it with
+<code class="docutils literal notranslate"><span class="pre">{&quot;name&quot;:</span> <span class="pre">&quot;cpi_stack&quot;,</span> <span class="pre">&quot;module&quot;:</span> <span class="pre">&quot;listener&quot;,</span> <span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;RETIRE_CPI_STACK&quot;}</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">DISPATCH_CPI_STACK</span></code> — the same breakdown at the dispatch stage, with dispatch-width slots:
+<em>dispatching</em> (a slot that dispatched a correct-path instruction), <em>mis-speculating</em> (a slot
+that dispatched a wrong-path instruction, or unused slots while the oldest waiting instruction
+is on the wrong path or the core recovers from a misprediction), <em>stalled</em> (unused slots while
+the oldest waiting instruction doesn’t fit in the ROB, LQ, or SQ), or
+<em>drained</em> (unused slots while the front end has nothing ready to dispatch).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ISSUE_CPI_STACK</span></code> — the same breakdown at the issue stage, with execute-width slots:
+<em>issuing</em> (a slot that issued a correct-path instruction), <em>mis-speculating</em> (a slot that
+issued a wrong-path instruction, or unused slots while only wrong-path instructions wait to
+issue or nothing waits while the core recovers from a misprediction), <em>stalled</em> (unused slots
+while a correct-path instruction waits on operands, scheduling, or a physical register, or
+nothing waits and the ROB, LQ, or SQ is full), or <em>drained</em> (unused slots while nothing waits
+and the front end isn’t supplying instructions).</p></li>
 </ul>
-<p>The function should return metadata that will be stored alongside the block.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">void</span> <span class="n">CACHE</span><span class="p">::</span><span class="n">replacement_final_stats</span><span class="p">();</span>
-</pre></div>
-</div>
-<p>This function is called at the end of the simulation and can be used to print statistics.</p>
+<p>In all three, stalled slots are broken down into <em>waiting on cache</em>, <em>waiting on dependencies</em>,
+and <em>other</em>, and drained slots into <em>waiting on cache</em> and <em>other</em>:</p>
+<ul class="simple">
+<li><p>Retire and dispatch stalls are classified by the ROB head (whose retirement frees room in the
+back end): waiting on cache when its load is in flight in the L1D (including the DTLB lookup),
+waiting on dependencies when it waits for an operand or its load waits for an older store to
+forward its data, and other otherwise (scheduling, execution, a load not yet sent to the L1D,
+a pending store, …).</p></li>
+<li><p>Issue stalls are classified by the oldest unissued correct-path instruction: waiting on cache
+when an operand it waits for comes from a load in flight in the L1D, waiting on dependencies
+when it waits for any other operand, and other when it waits on scheduling or a physical
+register. When nothing waits to issue and the back end is full, the ROB head decides, as above.</p></li>
+<li><p>Drained slots are waiting on cache when the oldest instruction in the front end has been sent
+to the L1I (including the ITLB lookup) and its block hasn’t returned, and other otherwise
+(decode and dispatch latency, the branch predictor, an empty fetch buffer, …).</p></li>
+</ul>
+<p>The retire stack also breaks each stalled sub-category down by where the ROB head is in its
+lifecycle, printed as <code class="docutils literal notranslate"><span class="pre">stalled</span> <span class="pre">&lt;cause&gt;</span> <span class="pre">-</span> <span class="pre">&lt;state&gt;</span></code> right after the sub-category’s line:
+waiting on cache into <em>load in flight</em>; waiting on dependencies into <em>waiting for operands</em> and
+<em>load waiting on store</em>; and other into <em>waiting to schedule</em>, <em>schedule blocked</em> (no free
+physical registers), <em>waiting to issue</em>, <em>executing</em>, <em>load not issued</em> (to the L1D), <em>store
+pending</em>, and <em>waiting to complete</em> (it completes after retire this cycle and retires next).</p>
+<p>All three print <code class="docutils literal notranslate"><span class="pre">CPU</span> <span class="pre">&lt;n&gt;</span> <span class="pre">&lt;stage&gt;</span> <span class="pre">CPI</span> <span class="pre">stack</span></code> with the total slots, the width, the cycles, the
+instructions, and the CPI, then one line per category with its slots, its share of all slots,
+and its CPI contribution (its slots divided by the width and the instructions); each
+sub-category’s line follows its category’s line. The categories
+always add up to width × cycles slots, and their CPI contributions to the phase’s CPI. The
+dispatch and issue stacks count correct-path instructions dispatched or issued, which can differ
+slightly from the number retired.</p>
+<dl class="cpp struct">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim7modules8listenerE">
+<span id="_CPPv3N8champsim7modules8listenerE"></span><span id="_CPPv2N8champsim7modules8listenerE"></span><span id="champsim::modules::listener"></span><span class="target" id="structchampsim_1_1modules_1_1listener"></span><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">listener</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">modules</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">module_base</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4N8champsim7modules8listenerE" title="champsim::modules::listener"><span class="n"><span class="pre">listener</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="n"><span class="pre">environment_module</span></span><span class="p"><span class="pre">&gt;</span></span><a class="headerlink" href="#_CPPv4N8champsim7modules8listenerE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Listener interface — observes simulation events without affecting timing.</p>
+<p>Listeners are attached to the environment as top-level <code class="docutils literal notranslate"><span class="pre">&quot;module&quot;:</span> <span class="pre">&quot;listener&quot;</span></code> children of an explicit config. Every hook is a no-op by default, so an implementation overrides only the events it cares about. The default implementation is <code class="docutils literal notranslate"><span class="pre">HEARTBEAT</span></code>, which prints periodic progress lines. </p>
+</dd></dl>
+
 </section>
 </section>
 
@@ -244,16 +845,120 @@
           </div>
         </div>
       </div>
-      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
         <div class="sphinxsidebarwrapper">
   <div>
     <h3><a href="index.html">Table of Contents</a></h3>
     <ul>
 <li><a class="reference internal" href="#">The ChampSim Module System</a><ul>
-<li><a class="reference internal" href="#branch-predictors">Branch Predictors</a></li>
-<li><a class="reference internal" href="#branch-target-buffers">Branch Target Buffers</a></li>
-<li><a class="reference internal" href="#memory-prefetchers">Memory Prefetchers</a></li>
-<li><a class="reference internal" href="#replacement-policies">Replacement Policies</a></li>
+<li><a class="reference internal" href="#interfaces-and-implementations">Interfaces and Implementations</a></li>
+<li><a class="reference internal" href="#module-construction-and-modulebuilder">Module Construction and ModuleBuilder</a><ul>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules13ModuleBuilderE"><code class="docutils literal notranslate"><span class="pre">champsim::modules::ModuleBuilder</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules13ModuleBuilder9get_modelEv"><code class="docutils literal notranslate"><span class="pre">get_model()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules13ModuleBuilder8get_nameEv"><code class="docutils literal notranslate"><span class="pre">get_name()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4I0ENK8champsim7modules13ModuleBuilder10get_parentEP1Tv"><code class="docutils literal notranslate"><span class="pre">get_parent()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#module-registration">Module Registration</a></li>
+<li><a class="reference internal" href="#branch-predictors">Branch Predictors</a><ul>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules16branch_predictorE"><code class="docutils literal notranslate"><span class="pre">champsim::modules::branch_predictor</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules16branch_predictor27initialize_branch_predictorEv"><code class="docutils literal notranslate"><span class="pre">initialize_branch_predictor()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules16branch_predictor18last_branch_resultEN8champsim7addressEN8champsim7addressEb7uint8_t"><code class="docutils literal notranslate"><span class="pre">last_branch_result()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules16branch_predictor14predict_branchEN8champsim7addressEN8champsim7addressEb7uint8_t"><code class="docutils literal notranslate"><span class="pre">predict_branch()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#branch-target-buffers">Branch Target Buffers</a><ul>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules3btbE"><code class="docutils literal notranslate"><span class="pre">champsim::modules::btb</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules3btb14initialize_btbEv"><code class="docutils literal notranslate"><span class="pre">initialize_btb()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules3btb10update_btbEN8champsim7addressEN8champsim7addressEb7uint8_t"><code class="docutils literal notranslate"><span class="pre">update_btb()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules3btb14btb_predictionEN8champsim7addressE7uint8_t"><code class="docutils literal notranslate"><span class="pre">btb_prediction()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#memory-prefetchers">Memory Prefetchers</a><ul>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules10prefetcherE"><code class="docutils literal notranslate"><span class="pre">champsim::modules::prefetcher</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules10prefetcher21prefetcher_initializeEv"><code class="docutils literal notranslate"><span class="pre">prefetcher_initialize()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules10prefetcher24prefetcher_cache_operateEN8champsim7addressEN8champsim7addressEbb11access_type8uint32_t"><code class="docutils literal notranslate"><span class="pre">prefetcher_cache_operate()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules10prefetcher21prefetcher_cache_fillEN8champsim7addressEllbN8champsim7addressE8uint32_t"><code class="docutils literal notranslate"><span class="pre">prefetcher_cache_fill()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules10prefetcher24prefetcher_cycle_operateEv"><code class="docutils literal notranslate"><span class="pre">prefetcher_cycle_operate()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules10prefetcher22prefetcher_final_statsEv"><code class="docutils literal notranslate"><span class="pre">prefetcher_final_stats()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules10prefetcher25prefetcher_branch_operateEN8champsim7addressE7uint8_tN8champsim7addressE"><code class="docutils literal notranslate"><span class="pre">prefetcher_branch_operate()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules10prefetcher13prefetch_lineEN8champsim7addressEb8uint32_t"><code class="docutils literal notranslate"><span class="pre">prefetch_line()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules10prefetcher13prefetch_lineE8uint64_tb8uint32_t"><code class="docutils literal notranslate"><span class="pre">prefetch_line()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#replacement-policies">Replacement Policies</a><ul>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules11replacementE"><code class="docutils literal notranslate"><span class="pre">champsim::modules::replacement</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules11replacement22initialize_replacementEv"><code class="docutils literal notranslate"><span class="pre">initialize_replacement()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules11replacement11find_victimE8uint32_t8uint64_tlPKN8champsim11cache_blockEN8champsim7addressEN8champsim7addressE11access_type"><code class="docutils literal notranslate"><span class="pre">find_victim()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules11replacement24update_replacement_stateE8uint32_tllN8champsim7addressEN8champsim7addressEN8champsim7addressE11access_typeb"><code class="docutils literal notranslate"><span class="pre">update_replacement_state()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules11replacement22replacement_cache_fillE8uint32_tllN8champsim7addressEN8champsim7addressEN8champsim7addressE11access_type"><code class="docutils literal notranslate"><span class="pre">replacement_cache_fill()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules11replacement23replacement_final_statsEv"><code class="docutils literal notranslate"><span class="pre">replacement_final_stats()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#cache-module-interface">Cache Module Interface</a><ul>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules12cache_moduleE"><code class="docutils literal notranslate"><span class="pre">champsim::modules::cache_module</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules12cache_module10stats_typeE"><code class="docutils literal notranslate"><span class="pre">stats_type</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules12cache_module13get_sim_statsEv"><code class="docutils literal notranslate"><span class="pre">get_sim_stats()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules12cache_module13get_roi_statsEv"><code class="docutils literal notranslate"><span class="pre">get_roi_stats()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules12cache_module19is_virtual_prefetchEv"><code class="docutils literal notranslate"><span class="pre">is_virtual_prefetch()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules12cache_module13prefetch_lineEN8champsim7addressEb8uint32_t"><code class="docutils literal notranslate"><span class="pre">prefetch_line()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules12cache_module16invalidate_entryEN8champsim7addressE"><code class="docutils literal notranslate"><span class="pre">invalidate_entry()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules12cache_module18get_mshr_occupancyEv"><code class="docutils literal notranslate"><span class="pre">get_mshr_occupancy()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules12cache_module13get_mshr_sizeEv"><code class="docutils literal notranslate"><span class="pre">get_mshr_size()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules12cache_module24get_mshr_occupancy_ratioEv"><code class="docutils literal notranslate"><span class="pre">get_mshr_occupancy_ratio()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules12cache_module16get_rq_occupancyEv"><code class="docutils literal notranslate"><span class="pre">get_rq_occupancy()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules12cache_module11get_rq_sizeEv"><code class="docutils literal notranslate"><span class="pre">get_rq_size()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules12cache_module22get_rq_occupancy_ratioEv"><code class="docutils literal notranslate"><span class="pre">get_rq_occupancy_ratio()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules12cache_module16get_wq_occupancyEv"><code class="docutils literal notranslate"><span class="pre">get_wq_occupancy()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules12cache_module11get_wq_sizeEv"><code class="docutils literal notranslate"><span class="pre">get_wq_size()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules12cache_module22get_wq_occupancy_ratioEv"><code class="docutils literal notranslate"><span class="pre">get_wq_occupancy_ratio()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules12cache_module16get_pq_occupancyEv"><code class="docutils literal notranslate"><span class="pre">get_pq_occupancy()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules12cache_module11get_pq_sizeEv"><code class="docutils literal notranslate"><span class="pre">get_pq_size()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules12cache_module22get_pq_occupancy_ratioEv"><code class="docutils literal notranslate"><span class="pre">get_pq_occupancy_ratio()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules12cache_module8num_setsEv"><code class="docutils literal notranslate"><span class="pre">num_sets()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules12cache_module8num_waysEv"><code class="docutils literal notranslate"><span class="pre">num_ways()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules12cache_module15get_offset_bitsEv"><code class="docutils literal notranslate"><span class="pre">get_offset_bits()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#core-module-interface">Core Module Interface</a><ul>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules11core_moduleE"><code class="docutils literal notranslate"><span class="pre">champsim::modules::core_module</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules11core_module10stats_typeE"><code class="docutils literal notranslate"><span class="pre">stats_type</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules11core_module9sim_instrEv"><code class="docutils literal notranslate"><span class="pre">sim_instr()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules11core_module11get_cpu_numEv"><code class="docutils literal notranslate"><span class="pre">get_cpu_num()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules11core_module9sim_cycleEv"><code class="docutils literal notranslate"><span class="pre">sim_cycle()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules11core_module13get_sim_statsEv"><code class="docutils literal notranslate"><span class="pre">get_sim_stats()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules11core_module13get_roi_statsEv"><code class="docutils literal notranslate"><span class="pre">get_roi_stats()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#memory-controller-interface">Memory Controller Interface</a><ul>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules24memory_controller_moduleE"><code class="docutils literal notranslate"><span class="pre">champsim::modules::memory_controller_module</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules24memory_controller_module10stats_typeE"><code class="docutils literal notranslate"><span class="pre">stats_type</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules24memory_controller_module16get_num_channelsEv"><code class="docutils literal notranslate"><span class="pre">get_num_channels()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules24memory_controller_module13get_sim_statsENSt6size_tE"><code class="docutils literal notranslate"><span class="pre">get_sim_stats()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules24memory_controller_module13get_roi_statsENSt6size_tE"><code class="docutils literal notranslate"><span class="pre">get_roi_stats()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim7modules24memory_controller_module4sizeEv"><code class="docutils literal notranslate"><span class="pre">size()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#listener-interface">Listener Interface</a><ul>
+<li><a class="reference internal" href="#_CPPv4N8champsim7modules8listenerE"><code class="docutils literal notranslate"><span class="pre">champsim::modules::listener</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -266,8 +971,8 @@
   </div>
   <div>
     <h4>Next topic</h4>
-    <p class="topless"><a href="Creating-a-configuration-file.html"
-                          title="next chapter">Creating a Configuration File</a></p>
+    <p class="topless"><a href="Tutorial.html"
+                          title="next chapter">Tutorial: Creating New Modules</a></p>
   </div>
   <div role="note" aria-label="source link">
     <h3>This Page</h3>
@@ -287,7 +992,7 @@
       
   </ul>
 </div>
-<div id="searchbox" style="display: none" role="search">
+<search id="searchbox" style="display: none" role="search">
   <h3 id="searchlabel">Quick search</h3>
     <div class="searchformwrapper">
     <form class="search" action="search.html" method="get">
@@ -295,20 +1000,20 @@
       <input type="submit" value="Go" />
     </form>
     </div>
-</div>
+</search>
 <script>document.getElementById('searchbox').style.display = "block"</script>
         </div>
       </div>
       <div class="clearer"></div>
     </div>
-    <div class="related" role="navigation" aria-label="related navigation">
+    <div class="related" role="navigation" aria-label="Related">
       <h3>Navigation</h3>
       <ul>
         <li class="right" style="margin-right: 10px">
           <a href="genindex.html" title="General Index"
              >index</a></li>
         <li class="right" >
-          <a href="Creating-a-configuration-file.html" title="Creating a Configuration File"
+          <a href="Tutorial.html" title="Tutorial: Creating New Modules"
              >next</a> |</li>
         <li class="right" >
           <a href="index.html" title="Welcome to the ChampSim wiki!"
@@ -319,7 +1024,7 @@
     </div>
     <div class="footer" role="contentinfo">
     &#169; Copyright 2023, The ChampSim Contributors.
-      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 7.2.6.
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.1.
     </div>
   </body>
 </html>

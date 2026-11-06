@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Cache Model &#8212; ChampSim  documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="_static/nature.css?v=279e0f84" />
+    <script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="The Legacy ChampSim Module System" href="Legacy-modules.html" />
+    <link rel="prev" title="Core Model" href="Core-model.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="Legacy-modules.html" title="The Legacy ChampSim Module System"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="Core-model.html" title="Core Model"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">ChampSim  documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Cache Model</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="cache-model">
+<span id="id1"></span><h1>Cache Model<a class="headerlink" href="#cache-model" title="Link to this heading">¶</a></h1>
+<p>The cache model in ChampSim is split into an <strong>interface</strong> and a <strong>default implementation</strong>:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">champsim::modules::cache_module</span></code> is the abstract interface that defines the contract
+all cache implementations must fulfill. Prefetchers and replacement policies interact
+with their parent cache through this interface (e.g. <code class="docutils literal notranslate"><span class="pre">get_mshr_occupancy_ratio()</span></code>,
+<code class="docutils literal notranslate"><span class="pre">get_mshr_size()</span></code>, <code class="docutils literal notranslate"><span class="pre">is_virtual_prefetch()</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CACHE</span></code> is the default implementation of <code class="docutils literal notranslate"><span class="pre">cache_module</span></code> (registered as
+<code class="docutils literal notranslate"><span class="pre">&quot;DEFAULT_CACHE&quot;</span></code>). It provides the standard set-associative cache model with
+configurable sets, ways, latencies, and queue sizes.</p></li>
+</ul>
+<section id="configuration-parameters">
+<h2>Configuration Parameters<a class="headerlink" href="#configuration-parameters" title="Link to this heading">¶</a></h2>
+<p>These parameters can be set in the JSON configuration file (see
+<a class="reference internal" href="Explicit-configuration-format.html#explicit-config"><span class="std std-ref">Explicit Configuration Format</span></a> or <a class="reference internal" href="Creating-a-configuration-file.html#creating-config"><span class="std std-ref">Creating a Configuration File</span></a>):</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">num_sets</span></code></dt><dd><p>Number of cache sets.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">num_ways</span></code></dt><dd><p>Number of ways per set.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">mshr_size</span></code></dt><dd><p>Capacity of the miss status holding register (MSHR).</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">pq_size</span></code></dt><dd><p>Prefetch queue capacity.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">hit_latency</span></code></dt><dd><p>Latency (in cycles) for a cache hit.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">fill_latency</span></code></dt><dd><p>Latency (in cycles) for a cache fill.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">offset_bits</span></code></dt><dd><p>Block offset bits (typed as <code class="docutils literal notranslate"><span class="pre">{&quot;bits&quot;:</span> <span class="pre">&quot;6&quot;}</span></code>).</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">max_tag_bandwidth</span></code></dt><dd><p>Maximum tag lookups per cycle.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">max_fill_bandwidth</span></code></dt><dd><p>Maximum fills per cycle.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">prefetch_as_load</span></code></dt><dd><p>If <code class="docutils literal notranslate"><span class="pre">true</span></code>, prefetch requests are treated as demand loads.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">match_offset_bits</span></code></dt><dd><p>If <code class="docutils literal notranslate"><span class="pre">true</span></code>, matching includes the offset bits.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">virtual_prefetch</span></code></dt><dd><p>If <code class="docutils literal notranslate"><span class="pre">true</span></code>, prefetcher operates on virtual addresses.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">pref_activate_mask</span></code></dt><dd><p>List of access types (e.g. <code class="docutils literal notranslate"><span class="pre">[&quot;LOAD&quot;,</span> <span class="pre">&quot;PREFETCH&quot;]</span></code>) that trigger the prefetcher.</p>
+</dd>
+</dl>
+</section>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">¶</a></h2>
+<p>Each <code class="docutils literal notranslate"><span class="pre">CACHE</span></code> instance has two submodules attached through its <code class="docutils literal notranslate"><span class="pre">&quot;children&quot;</span></code> array:</p>
+<ul class="simple">
+<li><p>A <strong>prefetcher</strong> (<code class="docutils literal notranslate"><span class="pre">&quot;module&quot;:</span> <span class="pre">&quot;prefetcher&quot;</span></code>), e.g. <code class="docutils literal notranslate"><span class="pre">ip_stride</span></code>, <code class="docutils literal notranslate"><span class="pre">next_line</span></code>, <code class="docutils literal notranslate"><span class="pre">no</span></code>.</p></li>
+<li><p>A <strong>replacement policy</strong> (<code class="docutils literal notranslate"><span class="pre">&quot;module&quot;:</span> <span class="pre">&quot;replacement&quot;</span></code>), e.g. <code class="docutils literal notranslate"><span class="pre">lru</span></code>, <code class="docutils literal notranslate"><span class="pre">srrip</span></code>, <code class="docutils literal notranslate"><span class="pre">drrip</span></code>.</p></li>
+</ul>
+</section>
+<section id="internal-queues-and-buffers">
+<h2>Internal Queues and Buffers<a class="headerlink" href="#internal-queues-and-buffers" title="Link to this heading">¶</a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">MSHR</span></code></dt><dd><p>Miss Status Holding Register — tracks outstanding misses. Sized by <code class="docutils literal notranslate"><span class="pre">mshr_size</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">inflight_fills</span></code></dt><dd><p>Fills currently being written into the cache from the lower level.</p>
+</dd>
+</dl>
+<p>Each cache also has request queues (RQ), write queues (WQ), and prefetch queues (PQ)
+on its upper-level channels.</p>
+</section>
+<section id="key-public-methods">
+<h2>Key Public Methods<a class="headerlink" href="#key-public-methods" title="Link to this heading">¶</a></h2>
+<section id="lifecycle-hooks">
+<h3>Lifecycle hooks<a class="headerlink" href="#lifecycle-hooks" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">initialize()</span></code>, <code class="docutils literal notranslate"><span class="pre">begin_phase()</span></code>, <code class="docutils literal notranslate"><span class="pre">end_phase()</span></code>, <code class="docutils literal notranslate"><span class="pre">end_simulation()</span></code></dt><dd><p>Called by the simulation framework at appropriate lifecycle points.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">operate()</span></code></dt><dd><p>Main per-cycle function. Processes tag lookups, fills, and prefetches each cycle.</p>
+</dd>
+</dl>
+</section>
+<section id="prefetcher-interface">
+<h3>Prefetcher interface<a class="headerlink" href="#prefetcher-interface" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">prefetch_line(addr,</span> <span class="pre">fill_this_level,</span> <span class="pre">metadata)</span></code></dt><dd><p>Issue a prefetch request. Called from within a prefetcher module.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">invalidate_entry(addr)</span></code></dt><dd><p>Invalidate the cache line at the given address.</p>
+</dd>
+</dl>
+</section>
+<section id="status-queries">
+<h3>Status queries<a class="headerlink" href="#status-queries" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">get_mshr_occupancy()</span></code> / <code class="docutils literal notranslate"><span class="pre">get_mshr_size()</span></code> / <code class="docutils literal notranslate"><span class="pre">get_mshr_occupancy_ratio()</span></code></dt><dd><p>Query MSHR utilization.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">get_rq_occupancy()</span></code> / <code class="docutils literal notranslate"><span class="pre">get_wq_occupancy()</span></code> / <code class="docutils literal notranslate"><span class="pre">get_pq_occupancy()</span></code></dt><dd><p>Query request, write, and prefetch queue occupancies.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">num_sets()</span></code> / <code class="docutils literal notranslate"><span class="pre">num_ways()</span></code> / <code class="docutils literal notranslate"><span class="pre">get_offset_bits()</span></code></dt><dd><p>Cache geometry accessors.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">is_virtual_prefetch()</span></code></dt><dd><p>Whether the prefetcher operates on virtual addresses.</p>
+</dd>
+</dl>
+</section>
+<section id="statistics">
+<h3>Statistics<a class="headerlink" href="#statistics" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">get_sim_stats()</span></code> / <code class="docutils literal notranslate"><span class="pre">get_roi_stats()</span></code></dt><dd><p>Return performance counters for the full simulation and region-of-interest phases.</p>
+</dd>
+</dl>
+</section>
+</section>
+<section id="module-interface-hooks">
+<h2>Module Interface Hooks<a class="headerlink" href="#module-interface-hooks" title="Link to this heading">¶</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">CACHE</span></code> class delegates to its submodules through these internal hooks:</p>
+<dl class="simple">
+<dt><strong>Prefetcher hooks:</strong></dt><dd><p><code class="docutils literal notranslate"><span class="pre">impl_prefetcher_initialize()</span></code>, <code class="docutils literal notranslate"><span class="pre">impl_prefetcher_cache_operate()</span></code>,
+<code class="docutils literal notranslate"><span class="pre">impl_prefetcher_cache_fill()</span></code>, <code class="docutils literal notranslate"><span class="pre">impl_prefetcher_cycle_operate()</span></code>,
+<code class="docutils literal notranslate"><span class="pre">impl_prefetcher_final_stats()</span></code>, <code class="docutils literal notranslate"><span class="pre">impl_prefetcher_branch_operate()</span></code></p>
+</dd>
+<dt><strong>Replacement hooks:</strong></dt><dd><p><code class="docutils literal notranslate"><span class="pre">impl_initialize_replacement()</span></code>, <code class="docutils literal notranslate"><span class="pre">impl_find_victim()</span></code>,
+<code class="docutils literal notranslate"><span class="pre">impl_update_replacement_state()</span></code>, <code class="docutils literal notranslate"><span class="pre">impl_replacement_cache_fill()</span></code>,
+<code class="docutils literal notranslate"><span class="pre">impl_replacement_final_stats()</span></code></p>
+</dd>
+</dl>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">Cache Model</a><ul>
+<li><a class="reference internal" href="#configuration-parameters">Configuration Parameters</a></li>
+<li><a class="reference internal" href="#submodules">Submodules</a></li>
+<li><a class="reference internal" href="#internal-queues-and-buffers">Internal Queues and Buffers</a></li>
+<li><a class="reference internal" href="#key-public-methods">Key Public Methods</a><ul>
+<li><a class="reference internal" href="#lifecycle-hooks">Lifecycle hooks</a></li>
+<li><a class="reference internal" href="#prefetcher-interface">Prefetcher interface</a></li>
+<li><a class="reference internal" href="#status-queries">Status queries</a></li>
+<li><a class="reference internal" href="#statistics">Statistics</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#module-interface-hooks">Module Interface Hooks</a></li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="Core-model.html"
+                          title="previous chapter">Core Model</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="Legacy-modules.html"
+                          title="next chapter">The Legacy ChampSim Module System</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/Cache-model.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div><div role="note">
+  <h3> This page on other branches</h3>
+  <h4>Branches</h4>
+  <ul>
+      
+        <li><strong>master</strong></li>
+      
+      
+        <li><a href="../develop/index.html">develop</a></li>
+      
+  </ul>
+</div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="Legacy-modules.html" title="The Legacy ChampSim Module System"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="Core-model.html" title="Core Model"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">ChampSim  documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Cache Model</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    &#169; Copyright 2023, The ChampSim Contributors.
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.1.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Core Model &#8212; ChampSim  documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="_static/nature.css?v=279e0f84" />
+    <script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Cache Model" href="Cache-model.html" />
+    <link rel="prev" title="Bandwidth" href="Bandwidth.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="Cache-model.html" title="Cache Model"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="Bandwidth.html" title="Bandwidth"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">ChampSim  documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Core Model</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="core-model">
+<span id="id1"></span><h1>Core Model<a class="headerlink" href="#core-model" title="Link to this heading">¶</a></h1>
+<p>The core model in ChampSim is split into an <strong>interface</strong> and a <strong>default implementation</strong>:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">champsim::modules::core_module</span></code> is the abstract interface that defines the contract
+all core implementations must fulfill. Branch predictors and BTBs interact with their
+parent core through this interface.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">O3_CPU</span></code> is the default implementation of <code class="docutils literal notranslate"><span class="pre">core_module</span></code> (registered as
+<code class="docutils literal notranslate"><span class="pre">&quot;DEFAULT_CORE&quot;</span></code>). It provides an aggressive out-of-order execution model with
+configurable pipeline widths, buffer sizes, and latencies.</p></li>
+</ul>
+<section id="configuration-parameters">
+<h2>Configuration Parameters<a class="headerlink" href="#configuration-parameters" title="Link to this heading">¶</a></h2>
+<section id="buffer-and-queue-sizes">
+<h3>Buffer and Queue Sizes<a class="headerlink" href="#buffer-and-queue-sizes" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">ifetch_buffer_size</span></code></dt><dd><p>Instruction fetch buffer capacity.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">dispatch_buffer_size</span></code></dt><dd><p>Dispatch buffer capacity.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">decode_buffer_size</span></code></dt><dd><p>Decode buffer capacity.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">rob_size</span></code></dt><dd><p>Reorder buffer size.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">lq_size</span></code></dt><dd><p>Load queue capacity.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">sq_size</span></code></dt><dd><p>Store queue capacity.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">register_file_size</span></code></dt><dd><p>Register file size.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">dib_hit_buffer_size</span></code></dt><dd><p>Decoded instruction buffer (DIB) hit buffer size.</p>
+</dd>
+</dl>
+</section>
+<section id="pipeline-widths">
+<h3>Pipeline Widths<a class="headerlink" href="#pipeline-widths" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">fetch_width</span></code>, <code class="docutils literal notranslate"><span class="pre">decode_width</span></code>, <code class="docutils literal notranslate"><span class="pre">dispatch_width</span></code>, <code class="docutils literal notranslate"><span class="pre">schedule_width</span></code>, <code class="docutils literal notranslate"><span class="pre">execute_width</span></code>, <code class="docutils literal notranslate"><span class="pre">retire_width</span></code></dt><dd><p>Maximum number of instructions processed per cycle in each pipeline stage.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">lq_width</span></code> / <code class="docutils literal notranslate"><span class="pre">sq_width</span></code></dt><dd><p>Load and store queue widths per cycle.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">l1i_bandwidth</span></code> / <code class="docutils literal notranslate"><span class="pre">l1d_bandwidth</span></code></dt><dd><p>L1 instruction and data cache bandwidth.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">dib_inorder_width</span></code></dt><dd><p>DIB in-order processing width.</p>
+</dd>
+</dl>
+</section>
+<section id="pipeline-latencies">
+<h3>Pipeline Latencies<a class="headerlink" href="#pipeline-latencies" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">decode_latency</span></code>, <code class="docutils literal notranslate"><span class="pre">dispatch_latency</span></code>, <code class="docutils literal notranslate"><span class="pre">schedule_latency</span></code>, <code class="docutils literal notranslate"><span class="pre">execute_latency</span></code></dt><dd><p>Latency (in cycles) for each pipeline stage.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">mispredict_penalty</span></code></dt><dd><p>Branch misprediction penalty in cycles.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">dib_hit_latency</span></code></dt><dd><p>Latency for a DIB hit.</p>
+</dd>
+</dl>
+</section>
+<section id="decoded-instruction-buffer-dib">
+<h3>Decoded Instruction Buffer (DIB)<a class="headerlink" href="#decoded-instruction-buffer-dib" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">dib_set</span></code>, <code class="docutils literal notranslate"><span class="pre">dib_way</span></code>, <code class="docutils literal notranslate"><span class="pre">dib_window</span></code></dt><dd><p>Set/way/window geometry of the decoded instruction buffer.</p>
+</dd>
+</dl>
+</section>
+</section>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">¶</a></h2>
+<p>Each <code class="docutils literal notranslate"><span class="pre">O3_CPU</span></code> instance has two submodules attached through its <code class="docutils literal notranslate"><span class="pre">&quot;children&quot;</span></code> array:</p>
+<ul class="simple">
+<li><p>A <strong>branch predictor</strong> (<code class="docutils literal notranslate"><span class="pre">&quot;module&quot;:</span> <span class="pre">&quot;branch_predictor&quot;</span></code>), e.g. <code class="docutils literal notranslate"><span class="pre">hashed_perceptron</span></code>,
+<code class="docutils literal notranslate"><span class="pre">bimodal</span></code>, <code class="docutils literal notranslate"><span class="pre">gshare</span></code>, <code class="docutils literal notranslate"><span class="pre">perceptron</span></code>.</p></li>
+<li><p>A <strong>BTB</strong> (<code class="docutils literal notranslate"><span class="pre">&quot;module&quot;:</span> <span class="pre">&quot;btb&quot;</span></code>), e.g. <code class="docutils literal notranslate"><span class="pre">basic_btb</span></code>.</p></li>
+</ul>
+</section>
+<section id="pipeline-stages">
+<h2>Pipeline Stages<a class="headerlink" href="#pipeline-stages" title="Link to this heading">¶</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">O3_CPU</span></code> models a full out-of-order pipeline. Each cycle, <code class="docutils literal notranslate"><span class="pre">operate()</span></code> drives
+the following stages:</p>
+<ol class="arabic simple">
+<li><p><strong>Fetch</strong> (<code class="docutils literal notranslate"><span class="pre">fetch_instruction()</span></code>): Fetch instructions from the L1I cache into
+the <code class="docutils literal notranslate"><span class="pre">IFETCH_BUFFER</span></code>.</p></li>
+<li><p><strong>DIB Check</strong> (<code class="docutils literal notranslate"><span class="pre">check_dib()</span></code>): Check the decoded instruction buffer for hits.</p></li>
+<li><p><strong>Decode</strong> (<code class="docutils literal notranslate"><span class="pre">decode_instruction()</span></code>): Move instructions from the fetch buffer
+through <code class="docutils literal notranslate"><span class="pre">promote_to_decode()</span></code> into the <code class="docutils literal notranslate"><span class="pre">DECODE_BUFFER</span></code>.</p></li>
+<li><p><strong>Dispatch</strong> (<code class="docutils literal notranslate"><span class="pre">dispatch_instruction()</span></code>): Dispatch decoded instructions into
+the <code class="docutils literal notranslate"><span class="pre">ROB</span></code>.</p></li>
+<li><p><strong>Schedule</strong> (<code class="docutils literal notranslate"><span class="pre">schedule_instruction()</span></code>): Select ready instructions for execution.</p></li>
+<li><p><strong>Execute</strong> (<code class="docutils literal notranslate"><span class="pre">execute_instruction()</span></code>): Execute instructions, including memory
+operations via <code class="docutils literal notranslate"><span class="pre">operate_lsq()</span></code>.</p></li>
+<li><p><strong>Complete</strong> (<code class="docutils literal notranslate"><span class="pre">complete_inflight_instruction()</span></code>): Complete in-flight instructions
+and handle memory returns (<code class="docutils literal notranslate"><span class="pre">handle_memory_return()</span></code>).</p></li>
+<li><p><strong>Retire</strong> (<code class="docutils literal notranslate"><span class="pre">retire_rob()</span></code>): Retire completed instructions from the <code class="docutils literal notranslate"><span class="pre">ROB</span></code>.</p></li>
+</ol>
+</section>
+<section id="internal-buffers">
+<h2>Internal Buffers<a class="headerlink" href="#internal-buffers" title="Link to this heading">¶</a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">IFETCH_BUFFER</span></code></dt><dd><p>Holds fetched instructions waiting to be decoded.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">DECODE_BUFFER</span></code></dt><dd><p>Holds instructions being decoded.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">DISPATCH_BUFFER</span></code></dt><dd><p>Holds decoded instructions waiting for dispatch into the ROB.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">ROB</span></code></dt><dd><p>Reorder buffer — tracks all in-flight instructions.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">DIB_HIT_BUFFER</span></code></dt><dd><p>Buffer for instructions that hit in the decoded instruction buffer.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">LQ</span></code></dt><dd><p>Load queue — tracks outstanding loads.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">SQ</span></code></dt><dd><p>Store queue — tracks outstanding stores.</p>
+</dd>
+</dl>
+</section>
+<section id="key-public-methods">
+<h2>Key Public Methods<a class="headerlink" href="#key-public-methods" title="Link to this heading">¶</a></h2>
+<section id="lifecycle-hooks">
+<h3>Lifecycle hooks<a class="headerlink" href="#lifecycle-hooks" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">initialize()</span></code>, <code class="docutils literal notranslate"><span class="pre">begin_phase()</span></code>, <code class="docutils literal notranslate"><span class="pre">end_phase()</span></code></dt><dd><p>Called by the simulation framework at appropriate lifecycle points.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">operate()</span></code></dt><dd><p>Main per-cycle function that drives all pipeline stages.</p>
+</dd>
+</dl>
+</section>
+<section id="statistics">
+<h3>Statistics<a class="headerlink" href="#statistics" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">sim_instr()</span></code> / <code class="docutils literal notranslate"><span class="pre">sim_cycle()</span></code> / <code class="docutils literal notranslate"><span class="pre">roi_instr()</span></code> / <code class="docutils literal notranslate"><span class="pre">roi_cycle()</span></code></dt><dd><p>Return instruction and cycle counts for simulation and region-of-interest phases.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">get_sim_stats()</span></code> / <code class="docutils literal notranslate"><span class="pre">get_roi_stats()</span></code></dt><dd><p>Return full performance counter structures.</p>
+</dd>
+</dl>
+</section>
+</section>
+<section id="module-interface-hooks">
+<h2>Module Interface Hooks<a class="headerlink" href="#module-interface-hooks" title="Link to this heading">¶</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">O3_CPU</span></code> class delegates to its submodules through these internal hooks:</p>
+<dl class="simple">
+<dt><strong>Branch predictor hooks:</strong></dt><dd><p><code class="docutils literal notranslate"><span class="pre">impl_initialize_branch_predictor()</span></code>, <code class="docutils literal notranslate"><span class="pre">impl_predict_branch()</span></code>,
+<code class="docutils literal notranslate"><span class="pre">impl_last_branch_result()</span></code></p>
+</dd>
+<dt><strong>BTB hooks:</strong></dt><dd><p><code class="docutils literal notranslate"><span class="pre">impl_initialize_btb()</span></code>, <code class="docutils literal notranslate"><span class="pre">impl_update_btb()</span></code>, <code class="docutils literal notranslate"><span class="pre">impl_btb_prediction()</span></code></p>
+</dd>
+</dl>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">Core Model</a><ul>
+<li><a class="reference internal" href="#configuration-parameters">Configuration Parameters</a><ul>
+<li><a class="reference internal" href="#buffer-and-queue-sizes">Buffer and Queue Sizes</a></li>
+<li><a class="reference internal" href="#pipeline-widths">Pipeline Widths</a></li>
+<li><a class="reference internal" href="#pipeline-latencies">Pipeline Latencies</a></li>
+<li><a class="reference internal" href="#decoded-instruction-buffer-dib">Decoded Instruction Buffer (DIB)</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#submodules">Submodules</a></li>
+<li><a class="reference internal" href="#pipeline-stages">Pipeline Stages</a></li>
+<li><a class="reference internal" href="#internal-buffers">Internal Buffers</a></li>
+<li><a class="reference internal" href="#key-public-methods">Key Public Methods</a><ul>
+<li><a class="reference internal" href="#lifecycle-hooks">Lifecycle hooks</a></li>
+<li><a class="reference internal" href="#statistics">Statistics</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#module-interface-hooks">Module Interface Hooks</a></li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="Bandwidth.html"
+                          title="previous chapter">Bandwidth</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="Cache-model.html"
+                          title="next chapter">Cache Model</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/Core-model.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div><div role="note">
+  <h3> This page on other branches</h3>
+  <h4>Branches</h4>
+  <ul>
+      
+        <li><strong>master</strong></li>
+      
+      
+        <li><a href="../develop/index.html">develop</a></li>
+      
+  </ul>
+</div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="Cache-model.html" title="Cache Model"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="Bandwidth.html" title="Bandwidth"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">ChampSim  documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Core Model</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    &#169; Copyright 2023, The ChampSim Contributors.
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.1.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Legacy Configuration API (Compile-Time) &#8212; ChampSim  documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="_static/nature.css?v=279e0f84" />
+    <script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Address Operations" href="Address-operations.html" />
+    <link rel="prev" title="Explicit Configuration Format" href="Explicit-configuration-format.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="Address-operations.html" title="Address Operations"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="Explicit-configuration-format.html" title="Explicit Configuration Format"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">ChampSim  documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Legacy Configuration API (Compile-Time)</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="legacy-configuration-api-compile-time">
+<span id="configuration-api"></span><h1>Legacy Configuration API (Compile-Time)<a class="headerlink" href="#legacy-configuration-api-compile-time" title="Link to this heading">¶</a></h1>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>This page documents the Python configuration API used by the <strong>compile-time</strong> (CT) version
+of ChampSim. In the current <strong>runtime</strong> (RT) version, configuration is handled entirely
+via JSON files loaded at runtime (see <a class="reference internal" href="Creating-a-configuration-file.html#creating-config"><span class="std std-ref">Creating a Configuration File</span></a> and <a class="reference internal" href="Explicit-configuration-format.html#explicit-config"><span class="std std-ref">Explicit Configuration Format</span></a>).</p>
+<p>The Python API below (<code class="docutils literal notranslate"><span class="pre">config.parse</span></code>, <code class="docutils literal notranslate"><span class="pre">config.filewrite</span></code>, <code class="docutils literal notranslate"><span class="pre">config.util</span></code>) is only
+relevant if you are working with a CT build that uses the <code class="docutils literal notranslate"><span class="pre">config.sh</span></code> / <code class="docutils literal notranslate"><span class="pre">config.py</span></code>
+workflow. The API reference is not generated for RT builds.</p>
+</div>
+<section id="parsing-api">
+<h2>Parsing API<a class="headerlink" href="#parsing-api" title="Link to this heading">¶</a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">config.parse.parse_config</span></code></dt><dd><p>Reads a JSON configuration file and produces a normalized system description.</p>
+</dd>
+</dl>
+</section>
+<section id="file-generation-api">
+<h2>File Generation API<a class="headerlink" href="#file-generation-api" title="Link to this heading">¶</a></h2>
+<p>The file generation API contains two interfaces: a high-level interface with <code class="docutils literal notranslate"><span class="pre">config.filewrite.FileWriter</span></code>, and a low-level interface with <code class="docutils literal notranslate"><span class="pre">config.filewrite.Fragment</span></code>.
+Users should prefer the high-level interface where possible.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">config.filewrite.FileWriter</span></code></dt><dd><p>High-level interface for generating ChampSim source files from a parsed configuration.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">config.filewrite.Fragment</span></code></dt><dd><p>Low-level interface for generating individual code fragments.</p>
+</dd>
+</dl>
+</section>
+<section id="utility-functions">
+<h2>Utility Functions<a class="headerlink" href="#utility-functions" title="Link to this heading">¶</a></h2>
+<section id="system-operations">
+<h3>System operations<a class="headerlink" href="#system-operations" title="Link to this heading">¶</a></h3>
+<p>ChampSim’s configuration makes frequent use of sequences of dictionaries. The following functions operate on a system, a dictionary whose values are dictionaries.</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">config.util.iter_system</span></code> — Iterate over all elements of a system description.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">config.util.combine_named</span></code> — Combine named elements from multiple sources.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">config.util.upper_levels_for</span></code> — Find the upper-level caches for a given cache.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">config.util.propogate_down</span></code> — Propagate values from upper to lower levels.</p></li>
+</ul>
+</section>
+<section id="itertools-extensions">
+<h3>Itertools extensions<a class="headerlink" href="#itertools-extensions" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">config.util.collect</span></code> — Collect elements into groups.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">config.util.batch</span></code> — Batch elements into fixed-size groups.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">config.util.sliding</span></code> — Sliding window over an iterable.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">config.util.cut</span></code> — Split an iterable at a given index.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">config.util.do_for_first</span></code> — Apply a function to only the first element.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">config.util.append_except_last</span></code> — Append a separator except after the last element.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">config.util.multiline</span></code> — Join lines with newline separators.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">config.util.yield_from_star</span></code> — Flatten nested iterables.</p></li>
+</ul>
+</section>
+<section id="dictionary-operations">
+<h3>Dictionary Operations<a class="headerlink" href="#dictionary-operations" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">config.util.chain</span></code> — Chain multiple dictionaries together.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">config.util.subdict</span></code> — Extract a subset of keys from a dictionary.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">config.util.extend_each</span></code> — Extend each value in a dictionary.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">config.util.explode</span></code> — Expand a dictionary into individual key-value pairs.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">config.parse.duplicate_to_length</span></code> — Duplicate elements to reach a target length.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">config.parse.extract_element</span></code> — Extract an element from a nested structure.</p></li>
+</ul>
+</section>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">Legacy Configuration API (Compile-Time)</a><ul>
+<li><a class="reference internal" href="#parsing-api">Parsing API</a></li>
+<li><a class="reference internal" href="#file-generation-api">File Generation API</a></li>
+<li><a class="reference internal" href="#utility-functions">Utility Functions</a><ul>
+<li><a class="reference internal" href="#system-operations">System operations</a></li>
+<li><a class="reference internal" href="#itertools-extensions">Itertools extensions</a></li>
+<li><a class="reference internal" href="#dictionary-operations">Dictionary Operations</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="Explicit-configuration-format.html"
+                          title="previous chapter">Explicit Configuration Format</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="Address-operations.html"
+                          title="next chapter">Address Operations</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/Configuration-API.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div><div role="note">
+  <h3> This page on other branches</h3>
+  <h4>Branches</h4>
+  <ul>
+      
+        <li><strong>master</strong></li>
+      
+      
+        <li><a href="../develop/index.html">develop</a></li>
+      
+  </ul>
+</div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="Address-operations.html" title="Address Operations"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="Explicit-configuration-format.html" title="Explicit Configuration Format"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">ChampSim  documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Legacy Configuration API (Compile-Time)</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    &#169; Copyright 2023, The ChampSim Contributors.
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.1.
+    </div>
+  </body>
+</html>

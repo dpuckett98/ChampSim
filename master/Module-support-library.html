@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Module Support Library &#8212; ChampSim  documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="_static/nature.css?v=279e0f84" />
+    <script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Creating a Configuration File" href="Creating-a-configuration-file.html" />
+    <link rel="prev" title="Tutorial: Creating New Modules" href="Tutorial.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="Creating-a-configuration-file.html" title="Creating a Configuration File"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="Tutorial.html" title="Tutorial: Creating New Modules"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">ChampSim  documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Module Support Library</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="module-support-library">
+<span id="id1"></span><h1>Module Support Library<a class="headerlink" href="#module-support-library" title="Link to this heading">¶</a></h1>
+<section id="fixed-width-saturating-counter">
+<h2>Fixed-width saturating counter<a class="headerlink" href="#fixed-width-saturating-counter" title="Link to this heading">¶</a></h2>
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE">
+<span id="_CPPv3I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE"></span><span id="_CPPv2I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">val_type</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::val_type"><span class="n"><span class="pre">val_type</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">MAXVAL</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::val_type"><span class="n"><span class="pre">val_type</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">MINVAL</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="classchampsim_1_1msl_1_1base__fwcounter"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">base_fwcounter</span></span></span><a class="headerlink" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>A fixed-width saturating counter. All arithmetic operations on this value are clamped between the maximum and minimum values.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>val_type</strong> – The underlying representation of the value. </p></li>
+<li><p><strong>MAXVAL</strong> – The maximum to saturate at. </p></li>
+<li><p><strong>MINVAL</strong> – The minimum to saturate at. </p></li>
+</ul>
+</dd>
+</dl>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl14base_fwcounterppEv">
+<span id="_CPPv3N8champsim3msl14base_fwcounterppEv"></span><span id="_CPPv2N8champsim3msl14base_fwcounterppEv"></span><span id="champsim::msl::base_fwcounter::inc-operator"></span><span class="target" id="classchampsim_1_1msl_1_1base__fwcounter_1a356c52429cc03ca176d3b59c0d75ee6e"></span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter"><span class="n"><span class="pre">base_fwcounter</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::val_type"><span class="n"><span class="pre">val_type</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MAXVAL"><span class="n"><span class="pre">MAXVAL</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MINVAL"><span class="n"><span class="pre">MINVAL</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="o"><span class="pre">++</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl14base_fwcounterppEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Increment the value, saturating at the maximum value. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl14base_fwcountermmEv">
+<span id="_CPPv3N8champsim3msl14base_fwcountermmEv"></span><span id="_CPPv2N8champsim3msl14base_fwcountermmEv"></span><span id="champsim::msl::base_fwcounter::dec-operator"></span><span class="target" id="classchampsim_1_1msl_1_1base__fwcounter_1a1a0c4012f5b76502c5abf2c1ce101d75"></span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter"><span class="n"><span class="pre">base_fwcounter</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::val_type"><span class="n"><span class="pre">val_type</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MAXVAL"><span class="n"><span class="pre">MAXVAL</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MINVAL"><span class="n"><span class="pre">MINVAL</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="o"><span class="pre">--</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl14base_fwcountermmEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Decrement the value, saturating at the minimum value. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl14base_fwcounterpLE14base_fwcounterI8val_type6MAXVAL6MINVALE">
+<span id="_CPPv3N8champsim3msl14base_fwcounterpLE14base_fwcounterI8val_type6MAXVAL6MINVALE"></span><span id="_CPPv2N8champsim3msl14base_fwcounterpLE14base_fwcounterI8val_type6MAXVAL6MINVALE"></span><span id="champsim::msl::base_fwcounter::add-assign-operator__base_fwcounter:val_type.MAXVAL.MINVAL:"></span><span class="target" id="classchampsim_1_1msl_1_1base__fwcounter_1a22f0865bdff806b2f826936f54f917b4"></span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter"><span class="n"><span class="pre">base_fwcounter</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::val_type"><span class="n"><span class="pre">val_type</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MAXVAL"><span class="n"><span class="pre">MAXVAL</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MINVAL"><span class="n"><span class="pre">MINVAL</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="o"><span class="pre">+=</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter"><span class="n"><span class="pre">base_fwcounter</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::val_type"><span class="n"><span class="pre">val_type</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MAXVAL"><span class="n"><span class="pre">MAXVAL</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MINVAL"><span class="n"><span class="pre">MINVAL</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl14base_fwcounterpLE14base_fwcounterI8val_type6MAXVAL6MINVALE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Add the other operand to the wrapped value, saturating at the minimum and maximum. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl14base_fwcountermIE14base_fwcounterI8val_type6MAXVAL6MINVALE">
+<span id="_CPPv3N8champsim3msl14base_fwcountermIE14base_fwcounterI8val_type6MAXVAL6MINVALE"></span><span id="_CPPv2N8champsim3msl14base_fwcountermIE14base_fwcounterI8val_type6MAXVAL6MINVALE"></span><span id="champsim::msl::base_fwcounter::sub-assign-operator__base_fwcounter:val_type.MAXVAL.MINVAL:"></span><span class="target" id="classchampsim_1_1msl_1_1base__fwcounter_1ace9500e78c8044e42a2bb0cc944a25db"></span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter"><span class="n"><span class="pre">base_fwcounter</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::val_type"><span class="n"><span class="pre">val_type</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MAXVAL"><span class="n"><span class="pre">MAXVAL</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MINVAL"><span class="n"><span class="pre">MINVAL</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="o"><span class="pre">-=</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter"><span class="n"><span class="pre">base_fwcounter</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::val_type"><span class="n"><span class="pre">val_type</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MAXVAL"><span class="n"><span class="pre">MAXVAL</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MINVAL"><span class="n"><span class="pre">MINVAL</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl14base_fwcountermIE14base_fwcounterI8val_type6MAXVAL6MINVALE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Subtract the other operand from the wrapped value, saturating at the minimum and maximum. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl14base_fwcountermLE14base_fwcounterI8val_type6MAXVAL6MINVALE">
+<span id="_CPPv3N8champsim3msl14base_fwcountermLE14base_fwcounterI8val_type6MAXVAL6MINVALE"></span><span id="_CPPv2N8champsim3msl14base_fwcountermLE14base_fwcounterI8val_type6MAXVAL6MINVALE"></span><span id="champsim::msl::base_fwcounter::mul-assign-operator__base_fwcounter:val_type.MAXVAL.MINVAL:"></span><span class="target" id="classchampsim_1_1msl_1_1base__fwcounter_1a67330022a4bc9c3789221e8ffa85823e"></span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter"><span class="n"><span class="pre">base_fwcounter</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::val_type"><span class="n"><span class="pre">val_type</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MAXVAL"><span class="n"><span class="pre">MAXVAL</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MINVAL"><span class="n"><span class="pre">MINVAL</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="o"><span class="pre">*=</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter"><span class="n"><span class="pre">base_fwcounter</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::val_type"><span class="n"><span class="pre">val_type</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MAXVAL"><span class="n"><span class="pre">MAXVAL</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MINVAL"><span class="n"><span class="pre">MINVAL</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl14base_fwcountermLE14base_fwcounterI8val_type6MAXVAL6MINVALE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Multiply the wrapped value by the other operand, saturating at the minimum and maximum. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl14base_fwcounterdVE14base_fwcounterI8val_type6MAXVAL6MINVALE">
+<span id="_CPPv3N8champsim3msl14base_fwcounterdVE14base_fwcounterI8val_type6MAXVAL6MINVALE"></span><span id="_CPPv2N8champsim3msl14base_fwcounterdVE14base_fwcounterI8val_type6MAXVAL6MINVALE"></span><span id="champsim::msl::base_fwcounter::div-assign-operator__base_fwcounter:val_type.MAXVAL.MINVAL:"></span><span class="target" id="classchampsim_1_1msl_1_1base__fwcounter_1afc08af49536ff38e2f3212763ca2f4c5"></span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter"><span class="n"><span class="pre">base_fwcounter</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::val_type"><span class="n"><span class="pre">val_type</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MAXVAL"><span class="n"><span class="pre">MAXVAL</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MINVAL"><span class="n"><span class="pre">MINVAL</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="o"><span class="pre">/=</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter"><span class="n"><span class="pre">base_fwcounter</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::val_type"><span class="n"><span class="pre">val_type</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MAXVAL"><span class="n"><span class="pre">MAXVAL</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::MINVAL"><span class="n"><span class="pre">MINVAL</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl14base_fwcounterdVE14base_fwcounterI8val_type6MAXVAL6MINVALE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Divide the wrapped value by the other operand, saturating at the minimum and maximum. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim3msl14base_fwcounter6is_maxEv">
+<span id="_CPPv3NK8champsim3msl14base_fwcounter6is_maxEv"></span><span id="_CPPv2NK8champsim3msl14base_fwcounter6is_maxEv"></span><span id="champsim::msl::base_fwcounter::is_maxC"></span><span class="target" id="classchampsim_1_1msl_1_1base__fwcounter_1aa67d63ed622467b4dbd56af7e8de85f5"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">is_max</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8champsim3msl14base_fwcounter6is_maxEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Detect whether the counter is saturated at its maximum. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim3msl14base_fwcounter6is_minEv">
+<span id="_CPPv3NK8champsim3msl14base_fwcounter6is_minEv"></span><span id="_CPPv2NK8champsim3msl14base_fwcounter6is_minEv"></span><span id="champsim::msl::base_fwcounter::is_minC"></span><span class="target" id="classchampsim_1_1msl_1_1base__fwcounter_1adc4c795ebc66d4cd97faac6de926a2ac"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">is_min</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8champsim3msl14base_fwcounter6is_minEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Detect whether the counter is saturated at its minimum. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim3msl14base_fwcounter5valueEv">
+<span id="_CPPv3NK8champsim3msl14base_fwcounter5valueEv"></span><span id="_CPPv2NK8champsim3msl14base_fwcounter5valueEv"></span><span id="champsim::msl::base_fwcounter::valueC"></span><span class="target" id="classchampsim_1_1msl_1_1base__fwcounter_1aa1d6138922f384e8edf6e4ee96f5d8cc"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter::val_type"><span class="n"><span class="pre">val_type</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">value</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8champsim3msl14base_fwcounter5valueEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Unpack the wrapped value. </p>
+</dd></dl>
+
+</div>
+</dd></dl>
+
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv4I_NSt6size_tEEN8champsim3msl9fwcounterE">
+<span id="_CPPv3I_NSt6size_tEEN8champsim3msl9fwcounterE"></span><span id="_CPPv2I_NSt6size_tEEN8champsim3msl9fwcounterE"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">WIDTH</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="fwcounter_8h_1a4454b4044718501c03a3a68e857b1ea9"></span><span class="k"><span class="pre">using</span></span><span class="w"> </span><span class="sig-prename descclassname"><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">msl</span></span><span class="p"><span class="pre">::</span></span></span><span class="sig-name descname"><span class="n"><span class="pre">fwcounter</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter"><span class="n"><span class="pre">base_fwcounter</span></span></a><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">signed</span></span><span class="w"> </span><span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="kt"><span class="pre">int</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">(</span></span><span class="m"><span class="pre">1</span></span><span class="w"> </span><span class="o"><span class="pre">&lt;&lt;</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I_NSt6size_tEEN8champsim3msl9fwcounterE" title="champsim::msl::fwcounter::WIDTH"><span class="n"><span class="pre">WIDTH</span></span></a><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-</span></span><span class="w"> </span><span class="m"><span class="pre">1</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><span class="p"><span class="pre">&gt;</span></span><a class="headerlink" href="#_CPPv4I_NSt6size_tEEN8champsim3msl9fwcounterE" title="Link to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv4I_NSt6size_tEEN8champsim3msl10sfwcounterE">
+<span id="_CPPv3I_NSt6size_tEEN8champsim3msl10sfwcounterE"></span><span id="_CPPv2I_NSt6size_tEEN8champsim3msl10sfwcounterE"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">WIDTH</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="fwcounter_8h_1a639dcc5f016c2b189847c7b66a179047"></span><span class="k"><span class="pre">using</span></span><span class="w"> </span><span class="sig-prename descclassname"><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">msl</span></span><span class="p"><span class="pre">::</span></span></span><span class="sig-name descname"><span class="n"><span class="pre">sfwcounter</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE" title="champsim::msl::base_fwcounter"><span class="n"><span class="pre">base_fwcounter</span></span></a><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">signed</span></span><span class="w"> </span><span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="kt"><span class="pre">int</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">(</span></span><span class="m"><span class="pre">1</span></span><span class="w"> </span><span class="o"><span class="pre">&lt;&lt;</span></span><span class="w"> </span><span class="p"><span class="pre">(</span></span><a class="reference internal" href="#_CPPv4I_NSt6size_tEEN8champsim3msl10sfwcounterE" title="champsim::msl::sfwcounter::WIDTH"><span class="n"><span class="pre">WIDTH</span></span></a><span class="w"> </span><span class="o"><span class="pre">-</span></span><span class="w"> </span><span class="m"><span class="pre">1</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">)</span></span><span class="w"> </span><span class="o"><span class="pre">-</span></span><span class="w"> </span><span class="m"><span class="pre">1</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="o"><span class="pre">-</span></span><span class="p"><span class="pre">(</span></span><span class="m"><span class="pre">1</span></span><span class="w"> </span><span class="o"><span class="pre">&lt;&lt;</span></span><span class="w"> </span><span class="p"><span class="pre">(</span></span><a class="reference internal" href="#_CPPv4I_NSt6size_tEEN8champsim3msl10sfwcounterE" title="champsim::msl::sfwcounter::WIDTH"><span class="n"><span class="pre">WIDTH</span></span></a><span class="w"> </span><span class="o"><span class="pre">-</span></span><span class="w"> </span><span class="m"><span class="pre">1</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">&gt;</span></span><a class="headerlink" href="#_CPPv4I_NSt6size_tEEN8champsim3msl10sfwcounterE" title="Link to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+</section>
+<section id="functions-for-bit-operations">
+<h2>Functions for bit operations<a class="headerlink" href="#functions-for-bit-operations" title="Link to this heading">¶</a></h2>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4I0EN8champsim3msl3lg2EDa1T">
+<span id="_CPPv3I0EN8champsim3msl3lg2E1T"></span><span id="_CPPv2I0EN8champsim3msl3lg2E1T"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="msl_2bits_8h_1a0f315d8fcc24a49ccdea0bdb6384e9ad"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">auto</span></span><span class="w"> </span><span class="sig-prename descclassname"><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">msl</span></span><span class="p"><span class="pre">::</span></span></span><span class="sig-name descname"><span class="n"><span class="pre">lg2</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4I0EN8champsim3msl3lg2EDa1T" title="champsim::msl::lg2::T"><span class="n"><span class="pre">T</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">n</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4I0EN8champsim3msl3lg2EDa1T" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Compute the base-2 logarithm of an integer. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4I0EN8champsim3msl9next_pow2E1T1T">
+<span id="_CPPv3I0EN8champsim3msl9next_pow2E1T"></span><span id="_CPPv2I0EN8champsim3msl9next_pow2E1T"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="msl_2bits_8h_1ae6e189c1599bd57362996e1c73466e55"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0EN8champsim3msl9next_pow2E1T1T" title="champsim::msl::next_pow2::T"><span class="n"><span class="pre">T</span></span></a><span class="w"> </span><span class="sig-prename descclassname"><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">msl</span></span><span class="p"><span class="pre">::</span></span></span><span class="sig-name descname"><span class="n"><span class="pre">next_pow2</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4I0EN8champsim3msl9next_pow2E1T1T" title="champsim::msl::next_pow2::T"><span class="n"><span class="pre">T</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">n</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4I0EN8champsim3msl9next_pow2E1T1T" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Compute the smallest power of 2 not less than the given integer. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4I0EN8champsim3msl13is_power_of_2Eb1T">
+<span id="_CPPv3I0EN8champsim3msl13is_power_of_2E1T"></span><span id="_CPPv2I0EN8champsim3msl13is_power_of_2E1T"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="msl_2bits_8h_1af4ddd1eb16ea5bfae7c2750cee60ecc9"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-prename descclassname"><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">msl</span></span><span class="p"><span class="pre">::</span></span></span><span class="sig-name descname"><span class="n"><span class="pre">is_power_of_2</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4I0EN8champsim3msl13is_power_of_2Eb1T" title="champsim::msl::is_power_of_2::T"><span class="n"><span class="pre">T</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">n</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4I0EN8champsim3msl13is_power_of_2Eb1T" title="Link to this definition">¶</a><br /></dt>
+<dd><p>A backport of <code class="docutils literal notranslate"><span class="pre">std::has_single_bit()</span></code>. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl4ipowExj">
+<span id="_CPPv3N8champsim3msl4ipowExj"></span><span id="_CPPv2N8champsim3msl4ipowExj"></span><span id="champsim::msl::ipow__l-l.unsignedCE"></span><span class="target" id="msl_2bits_8h_1a79d73e346f381a4057c3fefadcedc85a"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="sig-prename descclassname"><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">msl</span></span><span class="p"><span class="pre">::</span></span></span><span class="sig-name descname"><span class="n"><span class="pre">ipow</span></span></span><span class="sig-paren">(</span><span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">base</span></span>, <span class="kt"><span class="pre">unsigned</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">exp</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl4ipowExj" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Compute an integer power. This function may overflow very easily. Use only for small bases or very small exponents. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl7bitmaskEN8champsim4data4bitsEN8champsim4data4bitsE">
+<span id="_CPPv3N8champsim3msl7bitmaskEN8champsim4data4bitsEN8champsim4data4bitsE"></span><span id="_CPPv2N8champsim3msl7bitmaskEN8champsim4data4bitsEN8champsim4data4bitsE"></span><span id="champsim::msl::bitmask__champsim::data::bits.champsim::data::bitsCE"></span><span class="target" id="msl_2bits_8h_1aa9a2765d53ec3b4895dc2f5334573119"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="n"><span class="pre">uint64_t</span></span><span class="w"> </span><span class="sig-prename descclassname"><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">msl</span></span><span class="p"><span class="pre">::</span></span></span><span class="sig-name descname"><span class="n"><span class="pre">bitmask</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Byte-sizes.html#_CPPv4N8champsim4data4bitsE" title="champsim::data::bits"><span class="n"><span class="pre">bits</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">begin</span></span>, <span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Byte-sizes.html#_CPPv4N8champsim4data4bitsE" title="champsim::data::bits"><span class="n"><span class="pre">bits</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">end</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl7bitmaskEN8champsim4data4bitsEN8champsim4data4bitsE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Produce a mask that can be used in a bitwise-and operation to select particular bits of a number.</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="mh">0xffff</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">bitmask</span><span class="p">(</span><span class="mi">8</span><span class="n">_b</span><span class="p">,</span><span class="mi">4</span><span class="n">_b</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mh">0xf0</span><span class="p">;</span>
+</pre></div>
+</div>
+<p>If <code class="docutils literal notranslate"><span class="pre">end</span></code> is not specified, it is defaulted to 0, that is, the least-significant bit.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This should not be used as a mask generator for address types. Use <a class="reference internal" href="Address-operations.html#classchampsim_1_1address__slice"><span class="std std-ref">champsim::address_slice</span></a> instead. </p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>begin</strong> – The most-significant bit of the mask, not inclusive. </p></li>
+<li><p><strong>end</strong> – The least-significant bit of the mask, inclusive.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl7bitmaskEN8champsim4data4bitsE">
+<span id="_CPPv3N8champsim3msl7bitmaskEN8champsim4data4bitsE"></span><span id="_CPPv2N8champsim3msl7bitmaskEN8champsim4data4bitsE"></span><span id="champsim::msl::bitmask__champsim::data::bitsCE"></span><span class="target" id="msl_2bits_8h_1a9293146c9e0b61d5fe45942972d61f58"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="n"><span class="pre">uint64_t</span></span><span class="w"> </span><span class="sig-prename descclassname"><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">msl</span></span><span class="p"><span class="pre">::</span></span></span><span class="sig-name descname"><span class="n"><span class="pre">bitmask</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Byte-sizes.html#_CPPv4N8champsim4data4bitsE" title="champsim::data::bits"><span class="n"><span class="pre">bits</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">begin</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl7bitmaskEN8champsim4data4bitsE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>This is an overloaded member function, provided for convenience. It differs from the above function only in what argument(s) it accepts. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl7bitmaskENSt6size_tENSt6size_tE">
+<span id="_CPPv3N8champsim3msl7bitmaskENSt6size_tENSt6size_tE"></span><span id="_CPPv2N8champsim3msl7bitmaskENSt6size_tENSt6size_tE"></span><span id="champsim::msl::bitmask__std::s.std::sCE"></span><span class="target" id="msl_2bits_8h_1a6d9abb5fd053f86f1098cb17e04f196a"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="n"><span class="pre">uint64_t</span></span><span class="w"> </span><span class="sig-prename descclassname"><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">msl</span></span><span class="p"><span class="pre">::</span></span></span><span class="sig-name descname"><span class="n"><span class="pre">bitmask</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">begin</span></span>, <span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">end</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl7bitmaskENSt6size_tENSt6size_tE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>This is an overloaded member function, provided for convenience. It differs from the above function only in what argument(s) it accepts. <dl>
+<dt class="sig sig-object cpp">
+<em><span class="pre">Deprecated:</span></em></dt>
+<dd><p>Users should prefer the overload with <code class="docutils literal notranslate"><span class="pre">champsim::data::bits</span></code> parameters. </p>
+</dd></dl>
+
+</p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TN8champsim4data4bitsEN8champsim4data4bitsE">
+<span id="_CPPv3I0EN8champsim3msl11splice_bitsE1T1TN8champsim4data4bitsEN8champsim4data4bitsE"></span><span id="_CPPv2I0EN8champsim3msl11splice_bitsE1T1TN8champsim4data4bitsEN8champsim4data4bitsE"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="msl_2bits_8h_1af5686f715deaf18e98e956a8b53d89a0"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">auto</span></span><span class="w"> </span><span class="sig-prename descclassname"><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">msl</span></span><span class="p"><span class="pre">::</span></span></span><span class="sig-name descname"><span class="n"><span class="pre">splice_bits</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TN8champsim4data4bitsEN8champsim4data4bitsE" title="champsim::msl::splice_bits::T"><span class="n"><span class="pre">T</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">upper</span></span>, <a class="reference internal" href="#_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TN8champsim4data4bitsEN8champsim4data4bitsE" title="champsim::msl::splice_bits::T"><span class="n"><span class="pre">T</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">lower</span></span>, <span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Byte-sizes.html#_CPPv4N8champsim4data4bitsE" title="champsim::data::bits"><span class="n"><span class="pre">bits</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">bits_upper</span></span>, <span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Byte-sizes.html#_CPPv4N8champsim4data4bitsE" title="champsim::data::bits"><span class="n"><span class="pre">bits</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">bits_lower</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TN8champsim4data4bitsEN8champsim4data4bitsE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Join two values, selecting some bits from one value and some bits from another.</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="n">splice_bits</span><span class="p">(</span><span class="mh">0xaaaa</span><span class="p">,</span><span class="w"> </span><span class="mh">0xbbbb</span><span class="p">,</span><span class="w"> </span><span class="mi">8</span><span class="n">_b</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="n">_b</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mh">0xaaba</span><span class="p">;</span>
+</pre></div>
+</div>
+<p>If <code class="docutils literal notranslate"><span class="pre">end</span></code> is not specified, it is defaulted to 0, that is, the least-significant bit.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This is an implementation detail of <a class="reference internal" href="Address-operations.html#address_8h_1a596906c014000a57ab285841014f0602"><span class="std std-ref">champsim::splice()</span></a>, which should be preferred for address types. This function is provided for general use. </p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>upper</strong> – The operand from which to take the not-selected bits. </p></li>
+<li><p><strong>lower</strong> – The operand from which to take the selected bits. </p></li>
+<li><p><strong>bits_upper</strong> – The most-significant bit of the mask, not inclusive. </p></li>
+<li><p><strong>bits_lower</strong> – The least-significant bit of the mask, inclusive.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TN8champsim4data4bitsE">
+<span id="_CPPv3I0EN8champsim3msl11splice_bitsE1T1TN8champsim4data4bitsE"></span><span id="_CPPv2I0EN8champsim3msl11splice_bitsE1T1TN8champsim4data4bitsE"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="msl_2bits_8h_1a1f6bfa403a0b2e1b1e3feb1719ca2951"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">auto</span></span><span class="w"> </span><span class="sig-prename descclassname"><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">msl</span></span><span class="p"><span class="pre">::</span></span></span><span class="sig-name descname"><span class="n"><span class="pre">splice_bits</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TN8champsim4data4bitsE" title="champsim::msl::splice_bits::T"><span class="n"><span class="pre">T</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">upper</span></span>, <a class="reference internal" href="#_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TN8champsim4data4bitsE" title="champsim::msl::splice_bits::T"><span class="n"><span class="pre">T</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">lower</span></span>, <span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Byte-sizes.html#_CPPv4N8champsim4data4bitsE" title="champsim::data::bits"><span class="n"><span class="pre">bits</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">bits</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TN8champsim4data4bitsE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>This is an overloaded member function, provided for convenience. It differs from the above function only in what argument(s) it accepts. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TNSt6size_tENSt6size_tE">
+<span id="_CPPv3I0EN8champsim3msl11splice_bitsE1T1TNSt6size_tENSt6size_tE"></span><span id="_CPPv2I0EN8champsim3msl11splice_bitsE1T1TNSt6size_tENSt6size_tE"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="msl_2bits_8h_1a66ccb3c2b84f3bdfe6f5f75119a65936"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">auto</span></span><span class="w"> </span><span class="sig-prename descclassname"><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">msl</span></span><span class="p"><span class="pre">::</span></span></span><span class="sig-name descname"><span class="n"><span class="pre">splice_bits</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TNSt6size_tENSt6size_tE" title="champsim::msl::splice_bits::T"><span class="n"><span class="pre">T</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">upper</span></span>, <a class="reference internal" href="#_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TNSt6size_tENSt6size_tE" title="champsim::msl::splice_bits::T"><span class="n"><span class="pre">T</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">lower</span></span>, <span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">bits_upper</span></span>, <span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">bits_lower</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TNSt6size_tENSt6size_tE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>This is an overloaded member function, provided for convenience. It differs from the above function only in what argument(s) it accepts. <dl>
+<dt class="sig sig-object cpp">
+<em><span class="pre">Deprecated:</span></em></dt>
+<dd><p>Users should prefer the overload with <code class="docutils literal notranslate"><span class="pre">champsim::data::bits</span></code> parameters. </p>
+</dd></dl>
+
+</p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TNSt6size_tE">
+<span id="_CPPv3I0EN8champsim3msl11splice_bitsE1T1TNSt6size_tE"></span><span id="_CPPv2I0EN8champsim3msl11splice_bitsE1T1TNSt6size_tE"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="msl_2bits_8h_1a533b96c47d0aaaeec6fff9c288ef3d61"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">auto</span></span><span class="w"> </span><span class="sig-prename descclassname"><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">msl</span></span><span class="p"><span class="pre">::</span></span></span><span class="sig-name descname"><span class="n"><span class="pre">splice_bits</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TNSt6size_tE" title="champsim::msl::splice_bits::T"><span class="n"><span class="pre">T</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">upper</span></span>, <a class="reference internal" href="#_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TNSt6size_tE" title="champsim::msl::splice_bits::T"><span class="n"><span class="pre">T</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">lower</span></span>, <span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">bits</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TNSt6size_tE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>This is an overloaded member function, provided for convenience. It differs from the above function only in what argument(s) it accepts. <dl>
+<dt class="sig sig-object cpp">
+<em><span class="pre">Deprecated:</span></em></dt>
+<dd><p>Users should prefer the overload with <code class="docutils literal notranslate"><span class="pre">champsim::data::bits</span></code> parameters. </p>
+</dd></dl>
+
+</p>
+</dd></dl>
+
+</section>
+<section id="lru-table">
+<h2>LRU Table<a class="headerlink" href="#lru-table" title="Link to this heading">¶</a></h2>
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4I000EN8champsim3msl9lru_tableE">
+<span id="_CPPv3I000EN8champsim3msl9lru_tableE"></span><span id="_CPPv2I000EN8champsim3msl9lru_tableE"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">SetProj</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">detail</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">table_indexer</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I000EN8champsim3msl9lru_tableE" title="champsim::msl::lru_table::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">TagProj</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">detail</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">table_tagger</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I000EN8champsim3msl9lru_tableE" title="champsim::msl::lru_table::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="classchampsim_1_1msl_1_1lru__table"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">lru_table</span></span></span><a class="headerlink" href="#_CPPv4I000EN8champsim3msl9lru_tableE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>A set-associative table with LRU eviction.</p>
+<p>Elements are placed into sets using a set projection function object and matched within a set using a tag projection function object. By default, these call <code class="docutils literal notranslate"><span class="pre">.index()</span></code> and <code class="docutils literal notranslate"><span class="pre">.tag()</span></code> member functions on the element type. The number of sets must be a power of 2.</p>
+<p>This is useful for building hardware tables such as BTB entries, stride tracker tables, and signature tables. See <code class="docutils literal notranslate"><span class="pre">ip_stride</span></code> and <code class="docutils literal notranslate"><span class="pre">basic_btb</span></code> for examples.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>T</strong> – The element type stored in the table. </p></li>
+<li><p><strong>SetProj</strong> – A function object that projects an element to a set index. Defaults to calling <code class="docutils literal notranslate"><span class="pre">T::index()</span></code>. </p></li>
+<li><p><strong>TagProj</strong> – A function object that projects an element to a tag for matching. Defaults to calling <code class="docutils literal notranslate"><span class="pre">T::tag()</span></code>. </p></li>
+</ul>
+</dd>
+</dl>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl9lru_table9check_hitERK10value_type">
+<span id="_CPPv3N8champsim3msl9lru_table9check_hitERK10value_type"></span><span id="_CPPv2N8champsim3msl9lru_table9check_hitERK10value_type"></span><span id="champsim::msl::lru_table::check_hit__value_typeCR"></span><span class="target" id="classchampsim_1_1msl_1_1lru__table_1a0023e1d1c7af0b1ff941e242af4214df"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">optional</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">value_type</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">check_hit</span></span></span><span class="sig-paren">(</span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">value_type</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">elem</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl9lru_table9check_hitERK10value_type" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Look up an element in the table by set and tag.</p>
+<p>If a matching element is found, its LRU timestamp is updated and the element is returned. Otherwise returns <code class="docutils literal notranslate"><span class="pre">std::nullopt</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>elem</strong> – An element whose set and tag projections identify the lookup. </p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The matching element, or <code class="docutils literal notranslate"><span class="pre">std::nullopt</span></code> on a miss. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl9lru_table4fillERK10value_type">
+<span id="_CPPv3N8champsim3msl9lru_table4fillERK10value_type"></span><span id="_CPPv2N8champsim3msl9lru_table4fillERK10value_type"></span><span id="champsim::msl::lru_table::fill__value_typeCR"></span><span class="target" id="classchampsim_1_1msl_1_1lru__table_1a8a65e19e238bd99423b07830d0f08bac"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">fill</span></span></span><span class="sig-paren">(</span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">value_type</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">elem</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl9lru_table4fillERK10value_type" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Insert or update an element in the table.</p>
+<p>If an element with a matching tag already exists in the set, it is updated in place. Otherwise the LRU element in the set is evicted and replaced.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>elem</strong> – The element to insert. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl9lru_table10invalidateERK10value_type">
+<span id="_CPPv3N8champsim3msl9lru_table10invalidateERK10value_type"></span><span id="_CPPv2N8champsim3msl9lru_table10invalidateERK10value_type"></span><span id="champsim::msl::lru_table::invalidate__value_typeCR"></span><span class="target" id="classchampsim_1_1msl_1_1lru__table_1a1e2fb65a359c390d59eb83b66332115c"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">optional</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">value_type</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">invalidate</span></span></span><span class="sig-paren">(</span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">value_type</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">elem</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl9lru_table10invalidateERK10value_type" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Remove an element from the table.</p>
+<p>If a matching element is found, it is removed and returned. Otherwise returns <code class="docutils literal notranslate"><span class="pre">std::nullopt</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>elem</strong> – An element whose set and tag projections identify the entry to remove. </p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The removed element, or <code class="docutils literal notranslate"><span class="pre">std::nullopt</span></code> if not found. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl9lru_table9lru_tableENSt6size_tENSt6size_tE7SetProj7TagProj">
+<span id="_CPPv3N8champsim3msl9lru_table9lru_tableENSt6size_tENSt6size_tE7SetProj7TagProj"></span><span id="_CPPv2N8champsim3msl9lru_table9lru_tableENSt6size_tENSt6size_tE7SetProj7TagProj"></span><span id="champsim::msl::lru_table::lru_table__std::s.std::s.SetProj.TagProj"></span><span class="target" id="classchampsim_1_1msl_1_1lru__table_1a5bab2a08242e938c5dd7a03a64bd05c2"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">lru_table</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">sets</span></span>, <span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">ways</span></span>, <a class="reference internal" href="#_CPPv4I000EN8champsim3msl9lru_tableE" title="champsim::msl::lru_table::SetProj"><span class="n"><span class="pre">SetProj</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">set_proj</span></span>, <a class="reference internal" href="#_CPPv4I000EN8champsim3msl9lru_tableE" title="champsim::msl::lru_table::TagProj"><span class="n"><span class="pre">TagProj</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">tag_proj</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl9lru_table9lru_tableENSt6size_tENSt6size_tE7SetProj7TagProj" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Construct an LRU table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sets</strong> – The number of sets. Must be a positive power of 2. </p></li>
+<li><p><strong>ways</strong> – The number of ways per set. </p></li>
+<li><p><strong>set_proj</strong> – The function object used to compute the set index from an element. </p></li>
+<li><p><strong>tag_proj</strong> – The function object used to compute the tag from an element. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+</dd></dl>
+
+</section>
+<section id="set-dueling-utilities">
+<h2>Set-dueling utilities<a class="headerlink" href="#set-dueling-utilities" title="Link to this heading">¶</a></h2>
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4I00EN8champsim3msl11categorizerE">
+<span id="_CPPv3I00EN8champsim3msl11categorizerE"></span><span id="_CPPv2I00EN8champsim3msl11categorizerE"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">CatProj</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">category_projector</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I00EN8champsim3msl11categorizerE" title="champsim::msl::categorizer::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="classchampsim_1_1msl_1_1categorizer"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">categorizer</span></span></span><a class="headerlink" href="#_CPPv4I00EN8champsim3msl11categorizerE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Splits an input space into categories for set dueling.</p>
+<p>Given a candidate value and a sample rate, the categorizer assigns the candidate to a category number. Category 0 and category 1 are the two “leader” categories used by set-dueling policies like DRRIP and SHiP; all other categories are “follower” sets that use the winning policy.</p>
+<p>The sample rate must be a power of 2 and determines how many categories exist (equal to the sample rate).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>T</strong> – The type of value being categorized (e.g. <code class="docutils literal notranslate"><span class="pre">long</span></code> for set indices). </p></li>
+<li><p><strong>CatProj</strong> – A function object that projects a value of type T to an integer. Defaults to identity. </p></li>
+</ul>
+</dd>
+</dl>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim3msl11categorizer15get_sample_rateEv">
+<span id="_CPPv3NK8champsim3msl11categorizer15get_sample_rateEv"></span><span id="_CPPv2NK8champsim3msl11categorizer15get_sample_rateEv"></span><span id="champsim::msl::categorizer::get_sample_rateC"></span><span class="target" id="classchampsim_1_1msl_1_1categorizer_1ae4e5792cfa7ae4303d2cbd402df44c41"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_sample_rate</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8champsim3msl11categorizer15get_sample_rateEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return the sample rate used by this categorizer. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim3msl11categorizer19get_sample_categoryERK1T">
+<span id="_CPPv3NK8champsim3msl11categorizer19get_sample_categoryERK1T"></span><span id="_CPPv2NK8champsim3msl11categorizer19get_sample_categoryERK1T"></span><span id="champsim::msl::categorizer::get_sample_category__TCRC"></span><span class="target" id="classchampsim_1_1msl_1_1categorizer_1a3ede24932fe02f14b740073543a74ba2"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_sample_category</span></span></span><span class="sig-paren">(</span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I00EN8champsim3msl11categorizerE" title="champsim::msl::categorizer::T"><span class="n"><span class="pre">T</span></span></a><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">candidate</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8champsim3msl11categorizer19get_sample_categoryERK1T" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return the category number for a given candidate.</p>
+<p>Category 0 and 1 are the two leader categories. All other values are follower categories.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>candidate</strong> – The value to categorize. </p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The category index (0 to sample_rate - 1). </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl11categorizer11categorizerENSt6size_tE">
+<span id="_CPPv3N8champsim3msl11categorizer11categorizerENSt6size_tE"></span><span id="_CPPv2N8champsim3msl11categorizer11categorizerENSt6size_tE"></span><span id="champsim::msl::categorizer::categorizer__std::s"></span><span class="target" id="classchampsim_1_1msl_1_1categorizer_1ae629355bbd1f65823040320ffe285ef0"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">categorizer</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">sample_rate_</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl11categorizer11categorizerENSt6size_tE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Construct a categorizer with the given sample rate and default projection. </p>
+</dd></dl>
+
+</div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4I0_NSt6size_tE0EN8champsim3msl9dscounterE">
+<span id="_CPPv3I0_NSt6size_tE0EN8champsim3msl9dscounterE"></span><span id="_CPPv2I0_NSt6size_tE0EN8champsim3msl9dscounterE"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">COUNTER_WIDTH</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">CatProj</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">category_projector</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0_NSt6size_tE0EN8champsim3msl9dscounterE" title="champsim::msl::dscounter::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="classchampsim_1_1msl_1_1dscounter"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">dscounter</span></span></span><a class="headerlink" href="#_CPPv4I0_NSt6size_tE0EN8champsim3msl9dscounterE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>A dueling saturating counter for set-dueling policies.</p>
+<p>Combines a categorizer with a fixed-width saturating counter to implement set dueling. Category 0 samples are treated as “policy A” and category 1 samples as “policy B”. The counter tracks which policy is performing better.</p>
+<p>Use <code class="docutils literal notranslate"><a class="reference internal" href="#classchampsim_1_1msl_1_1dscounter_1abfa61ddb80451e49a7c8919eda8f60b2"><span class="std std-ref"><span class="pre">decide()</span></span></a></code> to choose a policy for follower sets, <code class="docutils literal notranslate"><a class="reference internal" href="#classchampsim_1_1msl_1_1dscounter_1a1ad6ecca15cadd0a7da8950f4afb6cb8"><span class="std std-ref"><span class="pre">update_good()</span></span></a></code> when a sample performs well, and <code class="docutils literal notranslate"><a class="reference internal" href="#classchampsim_1_1msl_1_1dscounter_1a2803b819987c4705daf13cffbd9ab5f4"><span class="std std-ref"><span class="pre">update_bad()</span></span></a></code> when a sample performs poorly.</p>
+<p>Used by replacement policies such as DRRIP and SHiP.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>T</strong> – The type of value being categorized (e.g. <code class="docutils literal notranslate"><span class="pre">long</span></code> for set indices). </p></li>
+<li><p><strong>COUNTER_WIDTH</strong> – The bit width of the internal saturating counter. </p></li>
+<li><p><strong>CatProj</strong> – A function object that projects a value of type T to an integer. Defaults to identity. </p></li>
+</ul>
+</dd>
+</dl>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8champsim3msl9dscounter15get_sample_rateEv">
+<span id="_CPPv3NK8champsim3msl9dscounter15get_sample_rateEv"></span><span id="_CPPv2NK8champsim3msl9dscounter15get_sample_rateEv"></span><span id="champsim::msl::dscounter::get_sample_rateC"></span><span class="target" id="classchampsim_1_1msl_1_1dscounter_1a50474131cabfeddeb820919c777c6221"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">get_sample_rate</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8champsim3msl9dscounter15get_sample_rateEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Return the sample rate used by the internal categorizer. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl9dscounter6decideERK1T">
+<span id="_CPPv3N8champsim3msl9dscounter6decideERK1T"></span><span id="_CPPv2N8champsim3msl9dscounter6decideERK1T"></span><span id="champsim::msl::dscounter::decide__TCR"></span><span class="target" id="classchampsim_1_1msl_1_1dscounter_1abfa61ddb80451e49a7c8919eda8f60b2"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">decide</span></span></span><span class="sig-paren">(</span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_NSt6size_tE0EN8champsim3msl9dscounterE" title="champsim::msl::dscounter::T"><span class="n"><span class="pre">T</span></span></a><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">candidate</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl9dscounter6decideERK1T" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Choose a policy for the given candidate.</p>
+<p>Returns <code class="docutils literal notranslate"><span class="pre">true</span></code> for category-0 candidates (always use policy A), <code class="docutils literal notranslate"><span class="pre">false</span></code> for category-1 candidates (always use policy B), and for follower categories returns <code class="docutils literal notranslate"><span class="pre">true</span></code> if policy A is currently winning.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>candidate</strong> – The value to decide on. </p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">true</span></code> if policy A should be used. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl9dscounter11update_goodERK1T">
+<span id="_CPPv3N8champsim3msl9dscounter11update_goodERK1T"></span><span id="_CPPv2N8champsim3msl9dscounter11update_goodERK1T"></span><span id="champsim::msl::dscounter::update_good__TCR"></span><span class="target" id="classchampsim_1_1msl_1_1dscounter_1a1ad6ecca15cadd0a7da8950f4afb6cb8"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">update_good</span></span></span><span class="sig-paren">(</span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_NSt6size_tE0EN8champsim3msl9dscounterE" title="champsim::msl::dscounter::T"><span class="n"><span class="pre">T</span></span></a><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">candidate</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl9dscounter11update_goodERK1T" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Report a good outcome for the given candidate.</p>
+<p>Increments the counter for category-0 samples and decrements it for category-1 samples. Has no effect on follower categories.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>candidate</strong> – The value that had a good outcome. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl9dscounter10update_badERK1T">
+<span id="_CPPv3N8champsim3msl9dscounter10update_badERK1T"></span><span id="_CPPv2N8champsim3msl9dscounter10update_badERK1T"></span><span id="champsim::msl::dscounter::update_bad__TCR"></span><span class="target" id="classchampsim_1_1msl_1_1dscounter_1a2803b819987c4705daf13cffbd9ab5f4"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">update_bad</span></span></span><span class="sig-paren">(</span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_NSt6size_tE0EN8champsim3msl9dscounterE" title="champsim::msl::dscounter::T"><span class="n"><span class="pre">T</span></span></a><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">candidate</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl9dscounter10update_badERK1T" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Report a bad outcome for the given candidate.</p>
+<p>Decrements the counter for category-0 samples and increments it for category-1 samples. Has no effect on follower categories.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>candidate</strong> – The value that had a bad outcome. </p>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl15get_sample_rateEl">
+<span id="_CPPv3N8champsim3msl15get_sample_rateEl"></span><span id="_CPPv2N8champsim3msl15get_sample_rateEl"></span><span id="champsim::msl::get_sample_rate__l"></span><span class="target" id="stat__methods_8h_1aa72fe8ccc1f8bf26babb778649fb89da"></span><span class="k"><span class="pre">static</span></span><span class="w"> </span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-prename descclassname"><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">msl</span></span><span class="p"><span class="pre">::</span></span></span><span class="sig-name descname"><span class="n"><span class="pre">get_sample_rate</span></span></span><span class="sig-paren">(</span><span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">num</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl15get_sample_rateEl" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Determine the sampling rate for set dueling based on the number of sets.</p>
+<p>Returns a power-of-2 sample rate: 32 for 1024+ sets, 16 for 256–1023, 8 for 64–255, 4 for 8–63. Asserts if fewer than 8 sets.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>num</strong> – The total number of sets. </p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The sample rate (a power of 2). </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8champsim3msl15get_num_samplesEl">
+<span id="_CPPv3N8champsim3msl15get_num_samplesEl"></span><span id="_CPPv2N8champsim3msl15get_num_samplesEl"></span><span id="champsim::msl::get_num_samples__l"></span><span class="target" id="stat__methods_8h_1acb7a0cc9aff012fed1b3c06492809b22"></span><span class="k"><span class="pre">static</span></span><span class="w"> </span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-prename descclassname"><span class="n"><span class="pre">champsim</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">msl</span></span><span class="p"><span class="pre">::</span></span></span><span class="sig-name descname"><span class="n"><span class="pre">get_num_samples</span></span></span><span class="sig-paren">(</span><span class="kt"><span class="pre">long</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">num</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8champsim3msl15get_num_samplesEl" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Calculate the number of samples for set dueling.</p>
+<p>Returns <code class="docutils literal notranslate"><span class="pre">num</span> <span class="pre">/</span> <span class="pre">get_sample_rate(num)</span></code>. Asserts that the number of sets is evenly divisible by the sample rate.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>num</strong> – The total number of sets. </p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The number of samples per category. </p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">Module Support Library</a><ul>
+<li><a class="reference internal" href="#fixed-width-saturating-counter">Fixed-width saturating counter</a><ul>
+<li><a class="reference internal" href="#_CPPv4I0_8val_type_8val_typeEN8champsim3msl14base_fwcounterE"><code class="docutils literal notranslate"><span class="pre">champsim::msl::base_fwcounter</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl14base_fwcounterppEv"><code class="docutils literal notranslate"><span class="pre">operator++()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl14base_fwcountermmEv"><code class="docutils literal notranslate"><span class="pre">operator--()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl14base_fwcounterpLE14base_fwcounterI8val_type6MAXVAL6MINVALE"><code class="docutils literal notranslate"><span class="pre">operator+=()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl14base_fwcountermIE14base_fwcounterI8val_type6MAXVAL6MINVALE"><code class="docutils literal notranslate"><span class="pre">operator-=()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl14base_fwcountermLE14base_fwcounterI8val_type6MAXVAL6MINVALE"><code class="docutils literal notranslate"><span class="pre">operator*=()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl14base_fwcounterdVE14base_fwcounterI8val_type6MAXVAL6MINVALE"><code class="docutils literal notranslate"><span class="pre">operator/=()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim3msl14base_fwcounter6is_maxEv"><code class="docutils literal notranslate"><span class="pre">is_max()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim3msl14base_fwcounter6is_minEv"><code class="docutils literal notranslate"><span class="pre">is_min()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim3msl14base_fwcounter5valueEv"><code class="docutils literal notranslate"><span class="pre">value()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#_CPPv4I_NSt6size_tEEN8champsim3msl9fwcounterE"><code class="docutils literal notranslate"><span class="pre">fwcounter</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4I_NSt6size_tEEN8champsim3msl10sfwcounterE"><code class="docutils literal notranslate"><span class="pre">sfwcounter</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#functions-for-bit-operations">Functions for bit operations</a><ul>
+<li><a class="reference internal" href="#_CPPv4I0EN8champsim3msl3lg2EDa1T"><code class="docutils literal notranslate"><span class="pre">lg2()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4I0EN8champsim3msl9next_pow2E1T1T"><code class="docutils literal notranslate"><span class="pre">next_pow2()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4I0EN8champsim3msl13is_power_of_2Eb1T"><code class="docutils literal notranslate"><span class="pre">is_power_of_2()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl4ipowExj"><code class="docutils literal notranslate"><span class="pre">ipow()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl7bitmaskEN8champsim4data4bitsEN8champsim4data4bitsE"><code class="docutils literal notranslate"><span class="pre">bitmask()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl7bitmaskEN8champsim4data4bitsE"><code class="docutils literal notranslate"><span class="pre">bitmask()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl7bitmaskENSt6size_tENSt6size_tE"><code class="docutils literal notranslate"><span class="pre">bitmask()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TN8champsim4data4bitsEN8champsim4data4bitsE"><code class="docutils literal notranslate"><span class="pre">splice_bits()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TN8champsim4data4bitsE"><code class="docutils literal notranslate"><span class="pre">splice_bits()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TNSt6size_tENSt6size_tE"><code class="docutils literal notranslate"><span class="pre">splice_bits()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4I0EN8champsim3msl11splice_bitsEDa1T1TNSt6size_tE"><code class="docutils literal notranslate"><span class="pre">splice_bits()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#lru-table">LRU Table</a><ul>
+<li><a class="reference internal" href="#_CPPv4I000EN8champsim3msl9lru_tableE"><code class="docutils literal notranslate"><span class="pre">champsim::msl::lru_table</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl9lru_table9check_hitERK10value_type"><code class="docutils literal notranslate"><span class="pre">check_hit()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl9lru_table4fillERK10value_type"><code class="docutils literal notranslate"><span class="pre">fill()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl9lru_table10invalidateERK10value_type"><code class="docutils literal notranslate"><span class="pre">invalidate()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl9lru_table9lru_tableENSt6size_tENSt6size_tE7SetProj7TagProj"><code class="docutils literal notranslate"><span class="pre">lru_table()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#set-dueling-utilities">Set-dueling utilities</a><ul>
+<li><a class="reference internal" href="#_CPPv4I00EN8champsim3msl11categorizerE"><code class="docutils literal notranslate"><span class="pre">champsim::msl::categorizer</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4NK8champsim3msl11categorizer15get_sample_rateEv"><code class="docutils literal notranslate"><span class="pre">get_sample_rate()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8champsim3msl11categorizer19get_sample_categoryERK1T"><code class="docutils literal notranslate"><span class="pre">get_sample_category()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl11categorizer11categorizerENSt6size_tE"><code class="docutils literal notranslate"><span class="pre">categorizer()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#_CPPv4I0_NSt6size_tE0EN8champsim3msl9dscounterE"><code class="docutils literal notranslate"><span class="pre">champsim::msl::dscounter</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4NK8champsim3msl9dscounter15get_sample_rateEv"><code class="docutils literal notranslate"><span class="pre">get_sample_rate()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl9dscounter6decideERK1T"><code class="docutils literal notranslate"><span class="pre">decide()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl9dscounter11update_goodERK1T"><code class="docutils literal notranslate"><span class="pre">update_good()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl9dscounter10update_badERK1T"><code class="docutils literal notranslate"><span class="pre">update_bad()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl15get_sample_rateEl"><code class="docutils literal notranslate"><span class="pre">get_sample_rate()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8champsim3msl15get_num_samplesEl"><code class="docutils literal notranslate"><span class="pre">get_num_samples()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="Tutorial.html"
+                          title="previous chapter">Tutorial: Creating New Modules</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="Creating-a-configuration-file.html"
+                          title="next chapter">Creating a Configuration File</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/Module-support-library.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div><div role="note">
+  <h3> This page on other branches</h3>
+  <h4>Branches</h4>
+  <ul>
+      
+        <li><strong>master</strong></li>
+      
+      
+        <li><a href="../develop/index.html">develop</a></li>
+      
+  </ul>
+</div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="Creating-a-configuration-file.html" title="Creating a Configuration File"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="Tutorial.html" title="Tutorial: Creating New Modules"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">ChampSim  documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Module Support Library</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    &#169; Copyright 2023, The ChampSim Contributors.
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.1.
+    </div>
+  </body>
+</html>

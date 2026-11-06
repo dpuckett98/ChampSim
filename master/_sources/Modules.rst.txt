@@ -1,239 +1,266 @@
 .. _Modules:
 
-=============================
+====================================
 The ChampSim Module System
-=============================
+====================================
 
-ChampSim uses four kinds of modules:
+ChampSim provides a runtime module system that allows you to swap implementations of key
+simulator components without recompilation. Each component type has an **interface** (a C++
+abstract base class with pure virtual methods) and one or more **implementations** (concrete
+classes that override every method). ChampSim ships default implementations for all
+interfaces; you can replace any of them with your own.
 
-* Branch Direction Predictors
-* Branch Target Predictors
-* Memory Prefetchers
-* Cache Replacement Policies
+Modules are implemented as C++ classes that inherit from an interface base class in the
+``champsim::modules`` namespace. Every module:
 
-Each of these is implemented as a set of hook functions. Each hook must be implemented, or compilation will fail.
+1. **Inherits** from one of the interface base classes listed below.
+2. **Implements** every pure virtual method declared by that interface (use empty stubs
+   ``override {}`` for methods where no behavior is needed).
+3. **Accepts a** ``champsim::modules::ModuleBuilder`` **in its constructor** to receive
+   configuration parameters and access its parent module.
+4. **Registers itself** with a static registration line so the simulator can instantiate it
+   by name at runtime.
+
+------------------------------------------
+Interfaces and Implementations
+------------------------------------------
+
+ChampSim distinguishes between **interfaces** and **implementations**:
+
+* An **interface** is an abstract base class that defines the contract a module must fulfill.
+  Interfaces live in ``champsim::modules`` and have names like ``prefetcher``,
+  ``replacement``, ``branch_predictor``, ``btb``, ``cache_module``, ``core_module``, etc.
+
+* An **implementation** is a concrete class that inherits from an interface and provides the
+  actual behavior. ChampSim ships default implementations (e.g. ``DEFAULT_CACHE``,
+  ``DEFAULT_CORE``, ``lru``, ``hashed_perceptron``, ``ip_stride``, etc.).
+
+When writing a new module, you implement an existing interface. The five user-facing
+module interfaces are:
+
+* ``champsim::modules::branch_predictor`` — attached to a core
+* ``champsim::modules::btb`` — attached to a core
+* ``champsim::modules::prefetcher`` — attached to a cache
+* ``champsim::modules::replacement`` — attached to a cache
+* ``champsim::modules::listener`` — attached to the environment (see `Listener Interface`_)
+
+Higher-level interfaces (``cache_module``, ``core_module``, ``memory_controller_module``,
+etc.) define the contracts that caches, cores, and DRAM controllers fulfill. The default
+implementations ``DEFAULT_CACHE`` (``CACHE`` class) and ``DEFAULT_CORE`` (``O3_CPU`` class)
+implement these interfaces. See :ref:`Cache_model` and :ref:`Core_model` for details.
+
+------------------------------------------
+Module Construction and ModuleBuilder
+------------------------------------------
+
+All modules receive a ``champsim::modules::ModuleBuilder`` in their constructor. The
+``ModuleBuilder`` provides:
+
+* **Configuration parameters** from the JSON config file via ``get_parameter<T>()``.
+* **Access to the parent module** via ``get_parent<T>()``. For example, a prefetcher can
+  obtain a pointer to its parent cache.
+* **The module's name and model** via ``get_name()`` and ``get_model()``.
+
+Example constructor::
+
+    struct my_pref : champsim::modules::prefetcher {
+        champsim::modules::cache_module* cache_ = nullptr;
+        int degree = 3;
+
+        my_pref(champsim::modules::ModuleBuilder builder)
+            : cache_(builder.get_parent<champsim::modules::cache_module>()),
+              degree(builder.get_parameter<int>("degree", true, 3))
+        {}
+    };
+
+.. doxygenstruct:: champsim::modules::ModuleBuilder
+   :members: get_parameter,get_parent,get_name,get_model
+
+------------------------------------------
+Module Registration
+------------------------------------------
+
+After defining your module class, register it with a static registration line in the
+``.cc`` file::
+
+    #include "my_pref.h"
+    #include "cache.h"
+
+    champsim::modules::prefetcher::register_module<my_pref> my_pref_register("my_pref");
+
+The string ``"my_pref"`` is the **model name** — this is the value you use in the JSON
+configuration file to select your module::
+
+    { "L2C": { "prefetcher": "my_pref" } }
+
+Or in the explicit config format::
+
+    { "name": "L2C_prefetcher", "module": "prefetcher", "model": "my_pref", "degree": 4 }
+
+By convention, the model name matches the directory name under ``prefetcher/``,
+``replacement/``, ``branch/``, or ``btb/``.
 
 ----------------------------
 Branch Predictors
 ----------------------------
 
-A branch predictor module must implement three functions.
+A branch predictor module inherits from ``champsim::modules::branch_predictor`` and must
+implement three functions.
 
-::
-
-  void O3_CPU::initialize_branch_predictor()
-
-This function is called when the core is initialized. You can use it to initialize elements of dynamic structures, such as `std::vector` or `std::map`.
-
-::
-
-  uint8_t O3_CPU::predict_branch(uint64_t ip, uint64_t predicted_target, uint8_t always_taken, uint8_t branch_type)
-
-This function is called when a prediction is needed. The parameters passed are:
-
-* ip: The instruction pointer of the branch
-* predicted_target: The predicted target of the branch. This is passed directly from the branch target predictor module and may be incorrect.
-* always_taken: A boolean value. This parameter will be nonzero if the branch target predictor determines that the branch is always taken.
-* branch_type: One of the following
-
-  * `BRANCH_DIRECT_JUMP`: Direct non-call, unconditional branches, whose target is encoded in the instruction
-  * `BRANCH_INDIRECT`: Indirect non-call, unconditional branches, whose target is stored in a register
-  * `BRANCH_CONDITIONAL`: A direct conditional branch
-  * `BRANCH_DIRECT_CALL`: A call to a procedure whose target is encoded in the instruction
-  * `BRANCH_INDIRECT_CALL`: A call to a procedure whose target is stored in a register
-  * `BRANCH_RETURN`: A return to a calling procedure
-  * `BRANCH_OTHER`: If the branch type cannot be determined
-
-::
-
-  void O3_CPU::last_branch_result(uint64_t ip, uint64_t branch_target, uint8_t taken, uint8_t branch_type)
-
-
-This function is called when a branch is resolved. The parameters are the same as in the previous hook, except that the last three are guaranteed to be correct.
+.. doxygenstruct:: champsim::modules::branch_predictor
+   :members:
 
 -----------------------------------
 Branch Target Buffers
 -----------------------------------
 
-A BTB module must implement three functions.
+A BTB module inherits from ``champsim::modules::btb`` and must implement three functions.
 
-::
-
-  void O3_CPU::initialize_btb()
-
-This function is called when the core is initialized. You can use it to initialize elements of dynamic structures, such as `std::vector` or `std::map`.
-
-::
-
-  std::pair<uint64_t, bool> O3_CPU::btb_prediction(uint64_t ip)
-
-This function is called when a prediction is needed. The parameters passed are:
-
-* ip: The instruction pointer of the branch
-
-The function should return a pair containing the predicted address and a boolean that describes if the branch is known to be always taken. If the prediction fails, the function should return a default-initialized address, e.g. `uint64_t{}`.
-
-::
-
-  void O3_CPU::update_btb(uint64_t ip, uint64_t branch_target, uint8_t taken, uint8_t branch_type)
-
-
-This function is called when a branch is resolved. The parameters are:
-
-* ip: The instruction pointer of the branch
-* branch_target: The correct target of the branch.
-* taken: A boolean value. This parameter will be nonzero if the branch was taken.
-* branch_type: One of the following
-
-  * `BRANCH_DIRECT_JUMP`: Direct non-call, unconditional branches, whose target is encoded in the instruction
-  * `BRANCH_INDIRECT`: Indirect non-call, unconditional branches, whose target is stored in a register
-  * `BRANCH_CONDITIONAL`: A direct conditional branch
-  * `BRANCH_DIRECT_CALL`: A call to a procedure whose target is encoded in the instruction
-  * `BRANCH_INDIRECT_CALL`: A call to a procedure whose target is stored in a register
-  * `BRANCH_RETURN`: A return to a calling procedure
-  * `BRANCH_OTHER`: If the branch type cannot be determined
+.. doxygenstruct:: champsim::modules::btb
+   :members:
 
 -----------------------------------
 Memory Prefetchers
 -----------------------------------
 
-A prefetcher module must implement five or six functions.
+A prefetcher module inherits from ``champsim::modules::prefetcher`` and must implement six
+functions. The ``prefetch_line()`` helper is provided by the base class for issuing
+prefetch requests into the parent cache.
 
-::
-
-  void CACHE::prefetcher_initialize()
-
-This function is called when the cache is initialized. You can use it to initialize elements of dynamic structures, such as `std::vector` or `std::map`.
-
-::
-
-  uint32_t CACHE::prefetcher_cache_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit, bool useful_prefetch, uint8_t type, uint32_t metadata_in);
-
-This function is called when a tag is checked in the cache. The parameters passed are:
-
-* addr: the address of the packet. If this is the first-level cache, the offset bits are included. Otherwise, the offset bits are zero. If the cache was configured with `"virtual_prefetch": true`, this address will be a virtual address. Otherwise, this is a physical address.
-* ip: the address of the instruction that initiated the demand. If the packet is a prefetch from another level, this value will be 0.
-* cache_hit: if this tag check is a hit, this value is nonzero. Otherwise, it is 0.
-* useful_prefetch: if this tag check hit a prior prefetch, this value is true.
-* type: the result of `static_cast<std::underlying_type_t<access_type>>(v)` for v in:
-  * `access_type::LOAD`
-  * `access_type::RFO`
-  * `access_type::PREFETCH`
-  * `access_type::WRITE`
-  * `access_type::TRANSLATION`
-* metadata_in: the metadata carried along by the packet.
-
-The function should return metadata that will be stored alongside the block.
-
-::
-
-  uint32_t CACHE::prefetcher_cache_fill(uint64_t addr, uint32_t set, uint32_way, uint8_t prefetch, uint32_t metadata_in);
-
-This function is called when a miss is filled in the cache. The parameters passed are:
-
-* addr: the address of the packet. If this is the first-level cache, the offset bits are included. Otherwise, the offset bits are zero. If the cache was configured with `"virtual_prefetch": true`, this address will be a virtual address. Otherwise, this is a physical address.
-* set: the set that the fill occurred in
-* way: the way that the fill occurred in, or `this->NUM_WAY` if a bypass occurred
-* prefetch: if this tag check hit a prior prefetch, this value is true.
-* metadata_in: the metadata carried along by the packet.
-
-The function should return metadata that will be stored alongside the block.
-
-::
-
-  void CACHE::prefetcher_cycle_operate();
-
-
-This function is called each cycle, after all other operation has completed.
-
-::
-
-  void CACHE::prefetcher_final_stats();
-
-
-This function is called at the end of the simulation and can be used to print statistics.
-
-
-::
-
-  void CACHE::prefetcher_branch_operate(uint64_t ip, uint8_t branch_type, uint64_t branch_target);
-
-
-This function must be implemented by instruction prefetchers. The parameters passed are:
-
-* ip: The instruction pointer of the branch
-* branch_type: One of the following
-
-  * `BRANCH_DIRECT_JUMP`: Direct non-call, unconditional branches, whose target is encoded in the instruction
-  * `BRANCH_INDIRECT`: Indirect non-call, unconditional branches, whose target is stored in a register
-  * `BRANCH_CONDITIONAL`: A direct conditional branch
-  * `BRANCH_DIRECT_CALL`: A call to a procedure whose target is encoded in the instruction
-  * `BRANCH_INDIRECT_CALL`: A call to a procedure whose target is stored in a register
-  * `BRANCH_RETURN`: A return to a calling procedure
-  * `BRANCH_OTHER`: If the branch type cannot be determined
-
-* branch_target: The instruction pointer of the target
+.. doxygenstruct:: champsim::modules::prefetcher
+   :members:
 
 -----------------------------------
 Replacement Policies
 -----------------------------------
 
-A replacement policy module must implement four functions.
+A replacement policy module inherits from ``champsim::modules::replacement`` and must
+implement five functions.
 
-::
+.. doxygenstruct:: champsim::modules::replacement
+   :members:
 
-  void CACHE::initialize_replacement()
+-----------------------------------
+Cache Module Interface
+-----------------------------------
 
-This function is called when the cache is initialized. You can use it to initialize elements of dynamic structures, such as `std::vector` or `std::map`.
+The ``cache_module`` interface defines the contract that caches fulfill. Prefetchers
+and replacement policies can query their parent cache through this interface, for
+example to read queue occupancy or cache geometry.
 
-::
+.. doxygenstruct:: champsim::modules::cache_module
+   :members:
 
-  uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t set, const BLOCK* current_set, uint64_t ip, uint64_t addr, uint32_t type);
+-----------------------------------
+Core Module Interface
+-----------------------------------
 
-This function is called when a tag is checked in the cache. The parameters passed are:
+The ``core_module`` interface defines the contract that CPU cores fulfill. Branch
+predictors and BTBs are attached to a core_module.
 
-* triggering_cpu: the core index that initiated this fill
-* instr_id: an instruction count that can be used to examine the program order of requests.
-* set: the set that the fill occurred in.
-* current_set: a pointer to the beginning of the set being accessed.
-* ip: the address of the instruction that initiated the demand. If the packet is a prefetch from another level, this value will be 0.
-* addr: the address of the packet. If this is the first-level cache, the offset bits are included. Otherwise, the offset bits are zero. If the cache was configured with `"virtual_prefetch": true`, this address will be a virtual address. Otherwise, this is a physical address.
-* type: the result of `static_cast<std::underlying_type_t<access_type>>(v)` for v in:
+.. doxygenstruct:: champsim::modules::core_module
+   :members:
 
-  * `access_type::LOAD`
-  * `access_type::RFO`
-  * `access_type::PREFETCH`
-  * `access_type::WRITE`
-  * `access_type::TRANSLATION`
+-----------------------------------
+Memory Controller Interface
+-----------------------------------
 
-The function should return the way index that should be evicted, or `this->NUM_WAY` to indicate that a bypass should occur.
+The ``memory_controller_module`` interface defines the contract that DRAM controllers
+fulfill. Stats can be retrieved per channel.
 
-::
+.. doxygenstruct:: champsim::modules::memory_controller_module
+   :members:
 
-  void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint32_t way, uint64_t addr, uint64_t ip, uint64_t victim_addr, uint8_t hit);
+-----------------------------------
+Listener Interface
+-----------------------------------
 
-This function is called when a hit occurs or a miss is filled in the cache. The parameters passed are:
+A ``listener`` observes simulation events without affecting timing. Every hook is a
+no-op by default, so an implementation overrides only the events it needs:
 
-* triggering_cpu: the core index that initiated this fill
-* set: the set that the fill occurred in.
-* way: the way that the fill occurred in.
-* addr: the address of the packet. If this is the first-level cache, the offset bits are included. Otherwise, the offset bits are zero. If the cache was configured with `"virtual_prefetch": true`, this address will be a virtual address. Otherwise, this is a physical address.
-* ip: the address of the instruction that initiated the demand. If the packet is a prefetch from another level, this value will be 0.
-* victim_addr: the address of the evicted block, if this is a miss. If this is a hit, the value is 0.
-* type: the result of `static_cast<std::underlying_type_t<access_type>>(v)` for v in:
+* ``begin_phase(is_warmup)`` — called at the start of each phase.
+* ``end_phase(is_warmup)`` — called at the end of each phase.
+* ``retire(cpu, begin, end, cycle)`` — called each cycle a core retires instructions,
+  with ``[begin, end)`` spanning the retiring ROB entries.
+* ``retire_cycle(cpu, cycle, num_retired, rob, recovering_from_mispredict)`` — called every
+  core cycle at the retire stage with the ROB as it stands at the start of the cycle.
+  ``recovering_from_mispredict`` is true from a misprediction flush until the next
+  correct-path instruction is dispatched into the ROB.
+* ``dispatch_cycle(cpu, cycle, num_dispatched, num_wp_dispatched, dispatch_buffer, backend_full, recovering_from_mispredict)``
+  — called every core cycle after dispatch. ``dispatch_buffer`` holds the instructions still
+  waiting to dispatch; ``backend_full`` is true when its head doesn't fit in the ROB, LQ, or SQ.
+* ``issue_cycle(cpu, cycle, num_issued, num_wp_issued, rob, backend_full, recovering_from_mispredict)``
+  — called every core cycle after instructions are issued to execute, with the ROB afterward.
 
-  * `access_type::LOAD`
-  * `access_type::RFO`
-  * `access_type::PREFETCH`
-  * `access_type::WRITE`
-  * `access_type::TRANSLATION`
+Register an implementation like any other module::
 
-The function should return metadata that will be stored alongside the block.
+    champsim::modules::listener::register_module<my_listener> reg("MY_LISTENER");
 
-::
+A run's listeners come from two places:
 
-  void CACHE::replacement_final_stats();
+* top-level ``"module": "listener"`` children of an explicit config, e.g.
+  ``{"name": "hb", "module": "listener", "model": "HEARTBEAT", "heartbeat_frequency": 1000000}``;
+* a default ``HEARTBEAT`` listener, added when no heartbeat is attached yet. It prints every
+  ``heartbeat_frequency`` retired instructions, taken from the config's root-level
+  ``heartbeat_frequency`` (default 10000000).
 
+``--hide-heartbeat`` removes every ``HEARTBEAT`` listener.
 
-This function is called at the end of the simulation and can be used to print statistics.
+ChampSim ships these listener models:
 
+* ``HEARTBEAT`` — prints each core's progress every ``heartbeat_frequency`` retired instructions.
+* ``RETIRE_CPI_STACK`` — a top-level CPI stack at the retire stage, counted in slots: each
+  core cycle has as many slots as the retire width. A slot that retires an instruction is
+  *retiring*; a cycle's unused slots all go to one category, decided by the oldest instruction
+  that didn't retire: *mis-speculating* (the ROB is empty while the core recovers from a
+  misprediction), *stalled* (the correct-path ROB head hasn't completed), or *drained* (the ROB is empty for any other reason, i.e.
+  the front end isn't supplying instructions). The counts are printed per core at the end of
+  each non-warmup phase. Enable it with
+  ``{"name": "cpi_stack", "module": "listener", "model": "RETIRE_CPI_STACK"}``.
+* ``DISPATCH_CPI_STACK`` — the same breakdown at the dispatch stage, with dispatch-width slots:
+  *dispatching* (a slot that dispatched a correct-path instruction), *mis-speculating* (a slot
+  that dispatched a wrong-path instruction, or unused slots while the oldest waiting instruction
+  is on the wrong path or the core recovers from a misprediction), *stalled* (unused slots while
+  the oldest waiting instruction doesn't fit in the ROB, LQ, or SQ), or
+  *drained* (unused slots while the front end has nothing ready to dispatch).
+* ``ISSUE_CPI_STACK`` — the same breakdown at the issue stage, with execute-width slots:
+  *issuing* (a slot that issued a correct-path instruction), *mis-speculating* (a slot that
+  issued a wrong-path instruction, or unused slots while only wrong-path instructions wait to
+  issue or nothing waits while the core recovers from a misprediction), *stalled* (unused slots
+  while a correct-path instruction waits on operands, scheduling, or a physical register, or
+  nothing waits and the ROB, LQ, or SQ is full), or *drained* (unused slots while nothing waits
+  and the front end isn't supplying instructions).
+
+In all three, stalled slots are broken down into *waiting on cache*, *waiting on dependencies*,
+and *other*, and drained slots into *waiting on cache* and *other*:
+
+* Retire and dispatch stalls are classified by the ROB head (whose retirement frees room in the
+  back end): waiting on cache when its load is in flight in the L1D (including the DTLB lookup),
+  waiting on dependencies when it waits for an operand or its load waits for an older store to
+  forward its data, and other otherwise (scheduling, execution, a load not yet sent to the L1D,
+  a pending store, ...).
+* Issue stalls are classified by the oldest unissued correct-path instruction: waiting on cache
+  when an operand it waits for comes from a load in flight in the L1D, waiting on dependencies
+  when it waits for any other operand, and other when it waits on scheduling or a physical
+  register. When nothing waits to issue and the back end is full, the ROB head decides, as above.
+* Drained slots are waiting on cache when the oldest instruction in the front end has been sent
+  to the L1I (including the ITLB lookup) and its block hasn't returned, and other otherwise
+  (decode and dispatch latency, the branch predictor, an empty fetch buffer, ...).
+
+The retire stack also breaks each stalled sub-category down by where the ROB head is in its
+lifecycle, printed as ``stalled <cause> - <state>`` right after the sub-category's line:
+waiting on cache into *load in flight*; waiting on dependencies into *waiting for operands* and
+*load waiting on store*; and other into *waiting to schedule*, *schedule blocked* (no free
+physical registers), *waiting to issue*, *executing*, *load not issued* (to the L1D), *store
+pending*, and *waiting to complete* (it completes after retire this cycle and retires next).
+
+All three print ``CPU <n> <stage> CPI stack`` with the total slots, the width, the cycles, the
+instructions, and the CPI, then one line per category with its slots, its share of all slots,
+and its CPI contribution (its slots divided by the width and the instructions); each
+sub-category's line follows its category's line. The categories
+always add up to width × cycles slots, and their CPI contributions to the phase's CPI. The
+dispatch and issue stacks count correct-path instructions dispatched or issued, which can differ
+slightly from the number retired.
+
+.. doxygenstruct:: champsim::modules::listener
+   :members:

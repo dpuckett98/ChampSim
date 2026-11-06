@@ -7,15 +7,15 @@
 
     <title>Welcome to the ChampSim wiki! &#8212; ChampSim  documentation</title>
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=a746c00c" />
-    <link rel="stylesheet" type="text/css" href="_static/nature.css?v=601dbdee" />
+    <link rel="stylesheet" type="text/css" href="_static/nature.css?v=279e0f84" />
     <script src="_static/documentation_options.js?v=5929fcd5"></script>
-    <script src="_static/doctools.js?v=888ff710"></script>
-    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="The ChampSim Module System" href="Modules.html" /> 
   </head><body>
-    <div class="related" role="navigation" aria-label="related navigation">
+    <div class="related" role="navigation" aria-label="Related">
       <h3>Navigation</h3>
       <ul>
         <li class="right" style="margin-right: 10px">
@@ -37,16 +37,41 @@
   <section id="welcome-to-the-champsim-wiki">
 <h1>Welcome to the ChampSim wiki!<a class="headerlink" href="#welcome-to-the-champsim-wiki" title="Link to this heading">¶</a></h1>
 <p>ChampSim is an open-source trace based simulator maintained at Texas A&amp;M University and through the support of the computer architecture community.
-ChampSim was originally developed to provide a platform for microarchitectural competitions (DPC3, DPC2, CRC2, IPC1, etc.) and has since been used for the development of multiple state-of-the-art cache replacement and prefetching policies.</p>
+ChampSim was originally developed to provide a platform for microarchitectural competitions (DPC4, DPC3, DPC2, CRC2, IPC1, etc.) and has since been used for the development of multiple state-of-the-art cache replacement and prefetching policies.</p>
 <p>We encourage you to read below to see if ChampSim is right for your research, class, or project!</p>
 <div class="toctree-wrapper compound">
 <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="Modules.html">The ChampSim Module System</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Modules.html#interfaces-and-implementations">Interfaces and Implementations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Modules.html#module-construction-and-modulebuilder">Module Construction and ModuleBuilder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Modules.html#module-registration">Module Registration</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Modules.html#branch-predictors">Branch Predictors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Modules.html#branch-target-buffers">Branch Target Buffers</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Modules.html#memory-prefetchers">Memory Prefetchers</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Modules.html#replacement-policies">Replacement Policies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Modules.html#cache-module-interface">Cache Module Interface</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Modules.html#core-module-interface">Core Module Interface</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Modules.html#memory-controller-interface">Memory Controller Interface</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Modules.html#listener-interface">Listener Interface</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Tutorial.html">Tutorial: Creating New Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Tutorial.html#part-1-creating-a-prefetcher">Part 1: Creating a Prefetcher</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Tutorial.html#part-2-creating-a-replacement-policy">Part 2: Creating a Replacement Policy</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Tutorial.html#part-3-creating-a-branch-predictor">Part 3: Creating a Branch Predictor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Tutorial.html#part-4-understanding-modulebuilder">Part 4: Understanding ModuleBuilder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Tutorial.html#part-5-debugging-module-construction">Part 5: Debugging Module Construction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Tutorial.html#part-6-defining-a-new-interface">Part 6: Defining a New Interface</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Tutorial.html#part-7-migrating-from-legacy-modules">Part 7: Migrating from Legacy Modules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Tutorial.html#part-8-modernizing-the-default-config">Part 8: Modernizing the Default Config</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Module-support-library.html">Module Support Library</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Module-support-library.html#fixed-width-saturating-counter">Fixed-width saturating counter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Module-support-library.html#functions-for-bit-operations">Functions for bit operations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Module-support-library.html#lru-table">LRU Table</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Module-support-library.html#set-dueling-utilities">Set-dueling utilities</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="Creating-a-configuration-file.html">Creating a Configuration File</a><ul>
@@ -54,15 +79,75 @@ ChampSim was originally developed to provide a platform for microarchitectural c
 <li class="toctree-l2"><a class="reference internal" href="Creating-a-configuration-file.html#cache-configuration">Cache Configuration</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Creating-a-configuration-file.html#multi-core-configurations">Multi-core configurations</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Creating-a-configuration-file.html#heterogeneous-systems">Heterogeneous systems</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Creating-a-configuration-file.html#passing-parameters-to-submodules">Passing Parameters to Submodules</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="Explicit-configuration-format.html">Explicit Configuration Format</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Explicit-configuration-format.html#basic-structure">Basic Structure</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Explicit-configuration-format.html#module-references">Module References</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Explicit-configuration-format.html#typed-parameter-objects">Typed Parameter Objects</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Explicit-configuration-format.html#submodules-children">Submodules (Children)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Explicit-configuration-format.html#channels">Channels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Explicit-configuration-format.html#a-minimal-example">A Minimal Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Explicit-configuration-format.html#debugging-with-dump">Debugging with –dump</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Configuration-API.html">Legacy Configuration API (Compile-Time)</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Configuration-API.html#parsing-api">Parsing API</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Configuration-API.html#file-generation-api">File Generation API</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Configuration-API.html#utility-functions">Utility Functions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Address-operations.html">Address Operations</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Address-operations.html#addresses">Addresses</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Address-operations.html#extents">Extents</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Byte-sizes.html">Byte Sizes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Byte-sizes.html#_CPPv4I00EN8champsim4data4sizeE"><code class="docutils literal notranslate"><span class="pre">champsim::data::size</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="Byte-sizes.html#_CPPv4N8champsim4data4bitsE"><code class="docutils literal notranslate"><span class="pre">bits</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="Byte-sizes.html#convenience-specializations">Convenience specializations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Byte-sizes.html#literals">Literals</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Bandwidth.html">Bandwidth</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Bandwidth.html#_CPPv4N8champsim9bandwidthE"><code class="docutils literal notranslate"><span class="pre">champsim::bandwidth</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Core-model.html">Core Model</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Core-model.html#configuration-parameters">Configuration Parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Core-model.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Core-model.html#pipeline-stages">Pipeline Stages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Core-model.html#internal-buffers">Internal Buffers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Core-model.html#key-public-methods">Key Public Methods</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Core-model.html#module-interface-hooks">Module Interface Hooks</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Cache-model.html">Cache Model</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Cache-model.html#configuration-parameters">Configuration Parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Cache-model.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Cache-model.html#internal-queues-and-buffers">Internal Queues and Buffers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Cache-model.html#key-public-methods">Key Public Methods</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Cache-model.html#module-interface-hooks">Module Interface Hooks</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Legacy-modules.html">The Legacy ChampSim Module System</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Legacy-modules.html#branch-predictors">Branch Predictors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Legacy-modules.html#branch-target-buffers">Branch Target Buffers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Legacy-modules.html#memory-prefetchers">Memory Prefetchers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Legacy-modules.html#replacement-policies">Replacement Policies</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Publications-using-champsim.html">Publications</a></li>
 </ul>
 </div>
+<p>ChampSim is commonly used as the basis for academic research.
+See a list of publications that use ChampSim <a class="reference internal" href="Publications-using-champsim.html#publications"><span class="std std-ref">here</span></a>.</p>
 <section id="champsim-s-goal">
 <h2>ChampSim’s Goal<a class="headerlink" href="#champsim-s-goal" title="Link to this heading">¶</a></h2>
 <p>The ultimate design philosophy of ChampSim is to provide an environment where an architect can realistically begin performing significant research within a month, but the simulator works right out of the box for exploration and quickly prototyping cache management ideas!
 With this in mind, ChampSim development works towards maintaining an accurate Out of Order execution and cache memory model without the overhead of larger multi-layered architectural research platforms.
-There are ChampSim-ready traces available online (from CRC2, IPC1, DPC3, and CVP) to let you quickly get started.
+There are ChampSim-ready traces available online (from CRC2, IPC1, DPC3, DPC4, and CVP) to let you quickly get started.
 The ChampSim design philosophy is summed up in three main design principles:</p>
 <ul class="simple">
 <li><p>Low startup time: The user should be able to perform new and meaningful memory system research in one month.</p></li>
@@ -74,7 +159,7 @@ The ChampSim design philosophy is summed up in three main design principles:</p>
 <h2>What ChampSim is<a class="headerlink" href="#what-champsim-is" title="Link to this heading">¶</a></h2>
 <ul class="simple">
 <li><p>A fast trace-based simulator that can get you started in computer architecture research quickly without a deeper understanding of microarchitecture.</p></li>
-<li><p>A modular simulator, with multiple interchangeable pieces that can be configured at compile time. This leads to diverse simulation environments and enables you to simulate the system you need!</p></li>
+<li><p>A modular simulator, with multiple interchangeable pieces that can be configured at runtime via JSON. This leads to diverse simulation environments and enables you to simulate the system you need!</p></li>
 </ul>
 </section>
 <section id="what-champsim-is-not">
@@ -113,7 +198,7 @@ Traces are easy to distribute for competitions, collaboration, or classroom sett
 </dd>
 <dt>I want to contribute! How do I do that?</dt><dd><p>We’re glad you asked! Take a look at some of the issues and their tags or get started on a new feature for ChampSim. We are currently using the develop branch to add improvements to the overall simulator. When you’re done, make a pull request and we’ll review it to be merged into the develop branch of the repository.</p>
 </dd>
-<dt>How do we cite ChampSim?</dt><dd><p>For now, please cite our [arXiv paper](<a class="reference external" href="https://arxiv.org/abs/2210.14324">https://arxiv.org/abs/2210.14324</a>).</p>
+<dt>How do we cite ChampSim?</dt><dd><p>For now, please cite our <a class="reference external" href="https://arxiv.org/abs/2210.14324">arXiv paper</a>.</p>
 </dd>
 </dl>
 </section>
@@ -125,7 +210,7 @@ Traces are easy to distribute for competitions, collaboration, or classroom sett
           </div>
         </div>
       </div>
-      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
         <div class="sphinxsidebarwrapper">
   <div>
     <h3><a href="#">Table of Contents</a></h3>
@@ -166,7 +251,7 @@ Traces are easy to distribute for competitions, collaboration, or classroom sett
       
   </ul>
 </div>
-<div id="searchbox" style="display: none" role="search">
+<search id="searchbox" style="display: none" role="search">
   <h3 id="searchlabel">Quick search</h3>
     <div class="searchformwrapper">
     <form class="search" action="search.html" method="get">
@@ -174,13 +259,13 @@ Traces are easy to distribute for competitions, collaboration, or classroom sett
       <input type="submit" value="Go" />
     </form>
     </div>
-</div>
+</search>
 <script>document.getElementById('searchbox').style.display = "block"</script>
         </div>
       </div>
       <div class="clearer"></div>
     </div>
-    <div class="related" role="navigation" aria-label="related navigation">
+    <div class="related" role="navigation" aria-label="Related">
       <h3>Navigation</h3>
       <ul>
         <li class="right" style="margin-right: 10px">
@@ -195,7 +280,7 @@ Traces are easy to distribute for competitions, collaboration, or classroom sett
     </div>
     <div class="footer" role="contentinfo">
     &#169; Copyright 2023, The ChampSim Contributors.
-      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 7.2.6.
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.1.
     </div>
   </body>
 </html>
