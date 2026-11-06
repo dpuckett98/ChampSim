@@ -112,6 +112,160 @@ configurable pipeline widths, buffer sizes, and latencies.</p></li>
 <code class="docutils literal notranslate"><span class="pre">bimodal</span></code>, <code class="docutils literal notranslate"><span class="pre">gshare</span></code>, <code class="docutils literal notranslate"><span class="pre">perceptron</span></code>.</p></li>
 <li><p>A <strong>BTB</strong> (<code class="docutils literal notranslate"><span class="pre">&quot;module&quot;:</span> <span class="pre">&quot;btb&quot;</span></code>), e.g. <code class="docutils literal notranslate"><span class="pre">basic_btb</span></code>.</p></li>
 </ul>
+<p><code class="docutils literal notranslate"><span class="pre">basic_btb</span></code> reads the following optional parameters from its child entry. Omitted
+parameters keep the defaults shown, which are the sizes it always used before they
+became configurable.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">btb_sets</span></code></p></td>
+<td><p>1024</p></td>
+<td><p>Sets in the set-associative target buffer (must be a power of 2)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">btb_ways</span></code></p></td>
+<td><p>8</p></td>
+<td><p>Ways in the target buffer</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">indirect_size</span></code></p></td>
+<td><p>4096</p></td>
+<td><p>Entries in the indirect-branch target table</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">indirect_history_length</span></code></p></td>
+<td><p>12</p></td>
+<td><p>Bits of conditional-branch history hashed into the indirect table index (at most 64)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ras_size</span></code></p></td>
+<td><p>64</p></td>
+<td><p>Return address stack depth; the oldest entry is dropped on overflow</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ras_call_size_trackers</span></code></p></td>
+<td><p>1024</p></td>
+<td><p>Entries in the table that learns each call instruction’s size</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ras_default_call_size</span></code></p></td>
+<td><p>4</p></td>
+<td><p>Call size assumed before a tracker entry has been calibrated</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ras_max_call_size</span></code></p></td>
+<td><p>10</p></td>
+<td><p>Largest call-to-return offset accepted when calibrating a tracker</p></td>
+</tr>
+</tbody>
+</table>
+<p>For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;cpu0_btb&quot;</span><span class="p">,</span> <span class="s2">&quot;module&quot;</span><span class="p">:</span> <span class="s2">&quot;btb&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;basic_btb&quot;</span><span class="p">,</span> <span class="s2">&quot;btb_sets&quot;</span><span class="p">:</span> <span class="mi">512</span><span class="p">,</span> <span class="s2">&quot;btb_ways&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span> <span class="s2">&quot;ras_size&quot;</span><span class="p">:</span> <span class="mi">16</span><span class="p">}</span>
+</pre></div>
+</div>
+<p>The branch predictors are configured the same way. Every parameter is optional and
+defaults to the predictor’s original size, except <code class="docutils literal notranslate"><span class="pre">bimodal</span></code>’s <code class="docutils literal notranslate"><span class="pre">hash_modulus</span></code> (see below).</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Model</p></th>
+<th class="head"><p>Parameter</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">bimodal</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">table_size</span></code></p></td>
+<td><p>16384</p></td>
+<td><p>Number of saturating counters</p></td>
+</tr>
+<tr class="row-odd"><td></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">hash_modulus</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">table_size</span></code></p></td>
+<td><p>The IP is hashed as <code class="docutils literal notranslate"><span class="pre">ip</span> <span class="pre">%</span> <span class="pre">hash_modulus</span></code>. The default indexes with the low-order IP bits,
+as hardware does; ChampSim originally used the prime 16381 (set it explicitly to get that back)</p></td>
+</tr>
+<tr class="row-even"><td></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">counter_bits</span></code></p></td>
+<td><p>2</p></td>
+<td><p>Counter width (1-16)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">gshare</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">history_length</span></code></p></td>
+<td><p>14</p></td>
+<td><p>Bits of global history (at most 64)</p></td>
+</tr>
+<tr class="row-even"><td></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">table_size</span></code></p></td>
+<td><p>16384</p></td>
+<td><p>Number of saturating counters</p></td>
+</tr>
+<tr class="row-odd"><td></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">counter_bits</span></code></p></td>
+<td><p>2</p></td>
+<td><p>Counter width (1-16)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">perceptron</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">history_length</span></code></p></td>
+<td><p>24</p></td>
+<td><p>Global history bits per perceptron (at most 64)</p></td>
+</tr>
+<tr class="row-odd"><td></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">weight_bits</span></code></p></td>
+<td><p>8</p></td>
+<td><p>Signed weight width (2-16)</p></td>
+</tr>
+<tr class="row-even"><td></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">num_perceptrons</span></code></p></td>
+<td><p>163</p></td>
+<td><p>Number of perceptrons, indexed by <code class="docutils literal notranslate"><span class="pre">ip</span> <span class="pre">%</span> <span class="pre">num_perceptrons</span></code></p></td>
+</tr>
+<tr class="row-odd"><td></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">update_buffer_size</span></code></p></td>
+<td><p>100</p></td>
+<td><p>In-flight predictions remembered for training</p></td>
+</tr>
+<tr class="row-even"><td></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">theta</span></code></p></td>
+<td><p>round(1.93 * <code class="docutils literal notranslate"><span class="pre">history_length</span></code> + 14)</p></td>
+<td><p>Training threshold</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">hashed_perceptron</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">table_size</span></code></p></td>
+<td><p>4096</p></td>
+<td><p>Weights per table (power of 2)</p></td>
+</tr>
+<tr class="row-even"><td></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">weight_bits</span></code></p></td>
+<td><p>8</p></td>
+<td><p>Signed weight width (2-16)</p></td>
+</tr>
+<tr class="row-odd"><td></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">history_lengths</span></code></p></td>
+<td><p>see below</p></td>
+<td><p>Global history length of each table; its length is the number of tables</p></td>
+</tr>
+<tr class="row-even"><td></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">num_tables</span></code>, <code class="docutils literal notranslate"><span class="pre">min_history</span></code>, <code class="docutils literal notranslate"><span class="pre">max_history</span></code></p></td>
+<td><p>16, 3, 232</p></td>
+<td><p>Used when <code class="docutils literal notranslate"><span class="pre">history_lengths</span></code> is absent: table 0 has no history, tables 1 to n-1
+have geometric lengths from <code class="docutils literal notranslate"><span class="pre">min_history</span></code> to <code class="docutils literal notranslate"><span class="pre">max_history</span></code>. The defaults give
+<code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">3,</span> <span class="pre">4,</span> <span class="pre">6,</span> <span class="pre">8,</span> <span class="pre">10,</span> <span class="pre">14,</span> <span class="pre">19,</span> <span class="pre">26,</span> <span class="pre">36,</span> <span class="pre">49,</span> <span class="pre">67,</span> <span class="pre">91,</span> <span class="pre">125,</span> <span class="pre">170,</span> <span class="pre">232]</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">threshold</span></code></p></td>
+<td><p>1</p></td>
+<td><p>Predict taken when the perceptron sum is at least this</p></td>
+</tr>
+<tr class="row-even"><td></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">initial_theta</span></code>, <code class="docutils literal notranslate"><span class="pre">theta_speed</span></code></p></td>
+<td><p>10, 18</p></td>
+<td><p>Starting training threshold and the speed of dynamic threshold adjustment</p></td>
+</tr>
+</tbody>
+</table>
+<p>For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;cpu0_bp&quot;</span><span class="p">,</span> <span class="s2">&quot;module&quot;</span><span class="p">:</span> <span class="s2">&quot;branch_predictor&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;hashed_perceptron&quot;</span><span class="p">,</span> <span class="s2">&quot;table_size&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">,</span> <span class="s2">&quot;history_lengths&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">64</span><span class="p">]}</span>
+</pre></div>
+</div>
 </section>
 <section id="pipeline-stages">
 <h2>Pipeline Stages<a class="headerlink" href="#pipeline-stages" title="Link to this heading">¶</a></h2>

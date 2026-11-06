@@ -88,6 +88,131 @@ Each ``O3_CPU`` instance has two submodules attached through its ``"children"`` 
   ``bimodal``, ``gshare``, ``perceptron``.
 * A **BTB** (``"module": "btb"``), e.g. ``basic_btb``.
 
+``basic_btb`` reads the following optional parameters from its child entry. Omitted
+parameters keep the defaults shown, which are the sizes it always used before they
+became configurable.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Default
+     - Meaning
+   * - ``btb_sets``
+     - 1024
+     - Sets in the set-associative target buffer (must be a power of 2)
+   * - ``btb_ways``
+     - 8
+     - Ways in the target buffer
+   * - ``indirect_size``
+     - 4096
+     - Entries in the indirect-branch target table
+   * - ``indirect_history_length``
+     - 12
+     - Bits of conditional-branch history hashed into the indirect table index (at most 64)
+   * - ``ras_size``
+     - 64
+     - Return address stack depth; the oldest entry is dropped on overflow
+   * - ``ras_call_size_trackers``
+     - 1024
+     - Entries in the table that learns each call instruction's size
+   * - ``ras_default_call_size``
+     - 4
+     - Call size assumed before a tracker entry has been calibrated
+   * - ``ras_max_call_size``
+     - 10
+     - Largest call-to-return offset accepted when calibrating a tracker
+
+For example::
+
+    {"name": "cpu0_btb", "module": "btb", "model": "basic_btb", "btb_sets": 512, "btb_ways": 8, "ras_size": 16}
+
+The branch predictors are configured the same way. Every parameter is optional and
+defaults to the predictor's original size, except ``bimodal``'s ``hash_modulus`` (see below).
+
+.. list-table::
+   :header-rows: 1
+
+   * - Model
+     - Parameter
+     - Default
+     - Meaning
+   * - ``bimodal``
+     - ``table_size``
+     - 16384
+     - Number of saturating counters
+   * -
+     - ``hash_modulus``
+     - ``table_size``
+     - The IP is hashed as ``ip % hash_modulus``. The default indexes with the low-order IP bits,
+       as hardware does; ChampSim originally used the prime 16381 (set it explicitly to get that back)
+   * -
+     - ``counter_bits``
+     - 2
+     - Counter width (1-16)
+   * - ``gshare``
+     - ``history_length``
+     - 14
+     - Bits of global history (at most 64)
+   * -
+     - ``table_size``
+     - 16384
+     - Number of saturating counters
+   * -
+     - ``counter_bits``
+     - 2
+     - Counter width (1-16)
+   * - ``perceptron``
+     - ``history_length``
+     - 24
+     - Global history bits per perceptron (at most 64)
+   * -
+     - ``weight_bits``
+     - 8
+     - Signed weight width (2-16)
+   * -
+     - ``num_perceptrons``
+     - 163
+     - Number of perceptrons, indexed by ``ip % num_perceptrons``
+   * -
+     - ``update_buffer_size``
+     - 100
+     - In-flight predictions remembered for training
+   * -
+     - ``theta``
+     - round(1.93 * ``history_length`` + 14)
+     - Training threshold
+   * - ``hashed_perceptron``
+     - ``table_size``
+     - 4096
+     - Weights per table (power of 2)
+   * -
+     - ``weight_bits``
+     - 8
+     - Signed weight width (2-16)
+   * -
+     - ``history_lengths``
+     - see below
+     - Global history length of each table; its length is the number of tables
+   * -
+     - ``num_tables``, ``min_history``, ``max_history``
+     - 16, 3, 232
+     - Used when ``history_lengths`` is absent: table 0 has no history, tables 1 to n-1
+       have geometric lengths from ``min_history`` to ``max_history``. The defaults give
+       ``[0, 3, 4, 6, 8, 10, 14, 19, 26, 36, 49, 67, 91, 125, 170, 232]``.
+   * -
+     - ``threshold``
+     - 1
+     - Predict taken when the perceptron sum is at least this
+   * -
+     - ``initial_theta``, ``theta_speed``
+     - 10, 18
+     - Starting training threshold and the speed of dynamic threshold adjustment
+
+For example::
+
+    {"name": "cpu0_bp", "module": "branch_predictor", "model": "hashed_perceptron", "table_size": 1024, "history_lengths": [0, 4, 16, 64]}
+
 --------------------------------------
 Pipeline Stages
 --------------------------------------
