@@ -16,8 +16,8 @@ struct direct_predictor {
     CONDITIONAL,
   };
 
-  static constexpr std::size_t sets = 1024;
-  static constexpr std::size_t ways = 8;
+  static constexpr std::size_t default_sets = 1024;
+  static constexpr std::size_t default_ways = 8;
 
   struct btb_entry_t {
     champsim::address ip_tag{};
@@ -36,7 +36,10 @@ struct direct_predictor {
     }
   };
 
-  champsim::msl::lru_table<btb_entry_t> BTB{sets, ways};
+  champsim::msl::lru_table<btb_entry_t> BTB;
+
+  explicit direct_predictor(std::size_t sets = default_sets, std::size_t ways = default_ways) : BTB{sets, ways} {}
+
   std::optional<btb_entry_t> check_hit(champsim::address ip);
   void update(champsim::address ip, champsim::address branch_target, uint8_t branch_type);
 };

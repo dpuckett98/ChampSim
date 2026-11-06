@@ -11,6 +11,18 @@
 #include "instruction.h"
 
 champsim::modules::btb::register_module<basic_btb> basic_btb_register("basic_btb");
+
+basic_btb::basic_btb(champsim::modules::ModuleBuilder builder)
+    : ras(builder.get_parameter<std::size_t>("ras_size", true, return_stack::default_max_size),
+          builder.get_parameter<std::size_t>("ras_call_size_trackers", true, return_stack::default_num_call_size_trackers),
+          builder.get_parameter<std::size_t>("ras_default_call_size", true, return_stack::default_call_size),
+          builder.get_parameter<std::size_t>("ras_max_call_size", true, return_stack::default_max_call_size)),
+      indirect(builder.get_parameter<std::size_t>("indirect_size", true, indirect_predictor::default_size),
+               builder.get_parameter<std::size_t>("indirect_history_length", true, indirect_predictor::default_history_length)),
+      direct(builder.get_parameter<std::size_t>("btb_sets", true, direct_predictor::default_sets),
+             builder.get_parameter<std::size_t>("btb_ways", true, direct_predictor::default_ways))
+{
+}
 std::pair<champsim::address, bool> basic_btb::btb_prediction(champsim::address ip, [[maybe_unused]] uint8_t branch_type)
 {
   // use BTB for all other branches + direct calls

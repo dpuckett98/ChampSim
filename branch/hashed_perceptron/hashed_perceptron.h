@@ -1,47 +1,61 @@
 #ifndef BRANCH_HASHED_PERCEPTRON_H
 #define BRANCH_HASHED_PERCEPTRON_H
 
-#include <array>
 #include <cstdint>
-#include <tuple>
 #include <vector>
 
 #include "folded_shift_register.h"
 #include "modules.h"
-#include "msl/bits.h"
-#include "msl/fwcounter.h"
 
+/*
+ * Optional config parameters (defaults are the original hard-coded sizes):
+ *   table_size (4096)     -- weights per table; a power of 2 (the index width is lg2 of it)
+ *   weight_bits (8)       -- width of each signed weight (2-16)
+ *   history_lengths       -- global history length for each table, e.g. [0, 3, 4, 6, ...]; the number of entries is the number of tables
+ *   num_tables (16), min_history (3), max_history (232)
+ *                         -- used when history_lengths is absent: table 0 has no history (biases), tables 1..n-1 have
+ *                            geometric lengths from min_history to max_history. The defaults reproduce the original list.
+ *   threshold (1)         -- predict taken when the perceptron sum is >= threshold
+ *   initial_theta (10), theta_speed (18)
+ *                         -- starting training threshold and the speed of O-GEHL dynamic threshold setting
+ */
 class hashed_perceptron : public champsim::modules::branch_predictor
 {
-  using bits = champsim::data::bits;                 // saves some typing
-  constexpr static std::size_t NTABLES = 16;         // this many tables
-  constexpr static bits MAXHIST{232};                // maximum history length
-  constexpr static bits MINHIST{3};                  // minimum history length (for table 1; table 0 is biases)
-  constexpr static std::size_t TABLE_SIZE = 1 << 12; // 12-bit indices for the tables
-  constexpr static bits TABLE_INDEX_BITS{champsim::msl::lg2(TABLE_SIZE)};
-  constexpr static int THRESHOLD = 1;
+public:
+  static constexpr std::size_t DEFAULT_TABLE_SIZE = 1 << 12;
+  static constexpr std::size_t DEFAULT_WEIGHT_BITS = 8;
+  static constexpr std::size_t DEFAULT_NUM_TABLES = 16;
+  static constexpr std::size_t DEFAULT_MIN_HISTORY = 3;
+  static constexpr std::size_t DEFAULT_MAX_HISTORY = 232;
+  static constexpr int DEFAULT_THRESHOLD = 1;
+  static constexpr int DEFAULT_INITIAL_THETA = 10;
+  static constexpr int DEFAULT_THETA_SPEED = 18;
 
-  constexpr static std::array<bits, NTABLES> history_lengths = {
-      bits{},   MINHIST,  bits{4},  bits{6},  bits{8},  bits{10},  bits{14},  bits{19},
-      bits{26}, bits{36}, bits{49}, bits{67}, bits{91}, bits{125}, bits{170}, MAXHIST}; // geometric global history lengths
+  // table 0 has no history; tables 1..num_tables-1 have geometric lengths from min_history to max_history
+  static std::vector<std::size_t> geometric_history_lengths(std::size_t num_tables, std::size_t min_history, std::size_t max_history);
 
-  // tables of 8-bit weights
-  std::array<std::array<champsim::msl::sfwcounter<8>, TABLE_SIZE>, NTABLES> tables{};
+private:
+  std::size_t table_size;
+  std::size_t table_index_bits;
+  int weight_max;
+  int weight_min;
+  int threshold;
+  int theta_speed;
+
+  std::vector<std::size_t> history_lengths;
+
+  // tables of weights, stored contiguously: table i occupies [i * table_size, (i + 1) * table_size)
+  std::vector<int> tables;
 
   // words that store the global history
-  using history_type = folded_shift_register<TABLE_INDEX_BITS>;
-  std::array<history_type, NTABLES> ghist_words = []() {
-    decltype(ghist_words) retval;
-    std::transform(std::cbegin(history_lengths), std::cend(history_lengths), std::begin(retval), [](const auto len) { return history_type{len}; });
-    return retval;
-  }();
+  std::vector<dynamic_folded_shift_register> ghist_words;
 
-  int theta = 10;
+  int theta;
   int tc = 0; // counter for threshold setting algorithm
 
   struct perceptron_result {
-    std::array<uint64_t, std::tuple_size_v<decltype(history_lengths)>> indices = {}; // remember the indices into the tables from prediction to update
-    int yout = 0;                                                                    // perceptron sum
+    std::vector<uint64_t> indices; // remember the indices into the tables from prediction to update
+    int yout = 0;                  // perceptron sum
   };
 
   perceptron_result last_result{};
@@ -51,7 +65,9 @@ public:
   bool predict_branch(champsim::address pc, champsim::address predicted_target, bool always_taken, uint8_t branch_type) override;
   void last_branch_result(champsim::address pc, champsim::address branch_target, bool taken, uint8_t branch_type) override;
   void adjust_threshold(bool correct);
-  hashed_perceptron(champsim::modules::ModuleBuilder /*builder*/) {};
+  explicit hashed_perceptron(champsim::modules::ModuleBuilder builder);
+
+  [[nodiscard]] const std::vector<std::size_t>& get_history_lengths() const { return history_lengths; }
 };
 
 #endif

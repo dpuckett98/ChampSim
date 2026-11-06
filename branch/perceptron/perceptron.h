@@ -1,88 +1,60 @@
 #ifndef BRANCH_PERCEPTRON_H
 #define BRANCH_PERCEPTRON_H
 
-#include <array>
-#include <bitset>
+#include <cstdint>
 #include <deque>
+#include <vector>
 
 #include "modules.h"
-#include "msl/fwcounter.h"
 
+/*
+ * Optional config parameters (defaults are the original hard-coded sizes):
+ *   history_length (24)      -- global history bits per perceptron (at most 64)
+ *   weight_bits (8)          -- width of each signed weight (2-16)
+ *   num_perceptrons (163)    -- number of perceptrons; indexed by ip % num_perceptrons
+ *   update_buffer_size (100) -- in-flight predictions remembered for training
+ *   theta                    -- training threshold; defaults to round(1.93 * history_length + 14)
+ */
 struct perceptron : champsim::modules::branch_predictor {
-  template <std::size_t HISTLEN, std::size_t BITS>
-  class internal_perceptron
-  {
-    using counter_type = champsim::msl::sfwcounter<BITS>;
+  static constexpr std::size_t DEFAULT_HISTORY = 24;
+  static constexpr std::size_t DEFAULT_BITS = 8;
+  static constexpr std::size_t DEFAULT_NUM_PERCEPTRONS = 163;
+  static constexpr std::size_t DEFAULT_NUM_UPDATE_ENTRIES = 100;
 
-    counter_type bias{0};
-    std::array<counter_type, HISTLEN> weights = {};
-
-  public:
-    typename counter_type::value_type predict(std::bitset<HISTLEN> history);
-
-    void update(bool result, std::bitset<HISTLEN> history);
-  };
-
-  static constexpr std::size_t PERCEPTRON_HISTORY = 24; // history length for the global history shift register
-  static constexpr std::size_t PERCEPTRON_BITS = 8;     // number of bits per weight
-  static constexpr std::size_t NUM_PERCEPTRONS = 163;
-
-  static constexpr std::size_t NUM_UPDATE_ENTRIES = 100; // size of buffer for keeping 'perceptron_state' for update
+  std::size_t history_length;
+  std::size_t weight_bits;
+  std::size_t num_perceptrons;
+  std::size_t num_update_entries;
+  long long theta;
+  long long weight_max = 0;
+  long long weight_min = 0;
 
   /* 'perceptron_state' - stores the branch prediction and keeps information
    * such as output and history needed for updating the perceptron predictor
    */
   struct perceptron_state {
     champsim::address ip{};
-    bool prediction = false;                     // prediction: 1 for taken, 0 for not taken
-    long long int output = 0;                    // perceptron output
-    std::bitset<PERCEPTRON_HISTORY> history = 0; // value of the history register yielding this prediction
+    bool prediction = false; // prediction: 1 for taken, 0 for not taken
+    long long int output = 0; // perceptron output
+    uint64_t history = 0;     // value of the history register yielding this prediction
   };
 
-  std::array<internal_perceptron<PERCEPTRON_HISTORY, PERCEPTRON_BITS>, NUM_PERCEPTRONS> perceptrons; // table of perceptrons
-  std::deque<perceptron_state> perceptron_state_buf;                                                 // state for updating perceptron predictor
-  std::bitset<PERCEPTRON_HISTORY> spec_global_history;                                               // speculative global history - updated by predictor
-  std::bitset<PERCEPTRON_HISTORY> global_history;                                                    // real global history - updated when the predictor is
-                                                                                                     // updated
-
-  using branch_predictor::branch_predictor;
+  // num_perceptrons rows of (history_length + 1) weights; weight 0 of each row is the bias
+  std::vector<long long> weights;
+  std::deque<perceptron_state> perceptron_state_buf; // state for updating perceptron predictor
+  uint64_t spec_global_history = 0;                  // speculative global history - updated by predictor
+  uint64_t global_history = 0;                       // real global history - updated when the predictor is updated
 
   void initialize_branch_predictor() override {}
   bool predict_branch(champsim::address ip, champsim::address predicted_target, bool always_taken, uint8_t branch_type) override;
   void last_branch_result(champsim::address ip, champsim::address branch_target, bool taken, uint8_t branch_type) override;
 
-  perceptron(champsim::modules::ModuleBuilder builder) {};
+  explicit perceptron(champsim::modules::ModuleBuilder builder);
+
+private:
+  [[nodiscard]] uint64_t history_mask() const { return history_length >= 64 ? ~uint64_t{0} : (uint64_t{1} << history_length) - 1; }
+  [[nodiscard]] long long predict_with(std::size_t index, uint64_t history) const;
+  void train(std::size_t index, bool result, uint64_t history);
 };
-
-template <std::size_t HISTLEN, std::size_t BITS>
-auto perceptron::internal_perceptron<HISTLEN, BITS>::predict(std::bitset<HISTLEN> history) -> typename counter_type::value_type
-{
-  auto output = bias.value();
-
-  // find the (rest of the) dot product of the history register and the perceptron weights.
-  for (std::size_t i = 0; i < std::size(history); i++) {
-    if (history[i])
-      output += weights[i].value();
-    else
-      output -= weights[i].value();
-  }
-
-  return output;
-}
-
-template <std::size_t HISTLEN, std::size_t BITS>
-void perceptron::internal_perceptron<HISTLEN, BITS>::update(bool result, std::bitset<HISTLEN> history)
-{
-  // if the branch was taken, increment the bias weight, else decrement it, with saturating arithmetic
-  bias += result ? 1 : -1;
-
-  // for each weight and corresponding bit in the history register...
-  auto upd_mask = result ? history : ~history; // if the i'th bit in the history positively
-                                               // correlates with this branch outcome,
-  for (std::size_t i = 0; i < std::size(upd_mask); i++) {
-    // increment the corresponding weight, else decrement it, with saturating arithmetic
-    weights[i] += upd_mask[i] ? 1 : -1;
-  }
-}
 
 #endif
