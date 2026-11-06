@@ -1,5 +1,5 @@
 {
-  "_description": "Pentium 4 (NetBurst, Northwood 3.0 GHz, 130 nm) single-core wrong-path config, derived from golden_cove.json. No L3 (L2 connects straight to DRAM) and no second-level TLB (DTLB/ITLB miss straight to the page walker). The 12K-uop trace cache is modeled as the DIB; there is no conventional L1I, so the L1I is a tiny streaming buffer in front of the L2. Not modeled: 128-byte sectored L2 lines (block_size stays 64), double-pumped ALUs (folded into execute_width), replay, the FSB/northbridge latency, and the hard-coded BTB (1024x8) / gshare (16K entries) sizes.",
+  "_description": "Pentium 4 (NetBurst, Northwood 3.0 GHz, 130 nm) single-core wrong-path config, derived from golden_cove.json. No L3 (L2 connects straight to DRAM) and no second-level TLB (DTLB/ITLB miss straight to the page walker). The 12K-uop trace cache is modeled as the DIB; there is no conventional L1I, so the L1I is a tiny streaming buffer in front of the L2. Not modeled: 128-byte sectored L2 lines (block_size stays 64), double-pumped ALUs (folded into execute_width), replay, the FSB/northbridge latency, and the hard-coded gshare (16K entries) size.",
   "environment": "ENVIRONMENT",
   "block_size": 64,
   "page_size": 4096,
@@ -579,7 +579,13 @@
         {
           "name": "cpu0_btb",
           "module": "btb",
-          "model": "basic_btb"
+          "model": "basic_btb",
+          "btb_sets": 1024,
+          "btb_ways": 4,
+          "indirect_size": 4096,
+          "indirect_history_length": 0,
+          "ras_size": 16,
+          "_comment": "4K-entry front-end BTB (associativity approximate) and 16-entry return stack. Northwood has no indirect predictor and reuses the BTB's last target, approximated by an IP-indexed table with no history. The separate 512-entry trace-cache BTB is not modeled."
         },
         {
           "_comment": "Trace-driven workload source. $trace0 is the first positional CLI trace.",

@@ -1,0 +1,775 @@
+{
+  "_description": "Nehalem (Bloomfield Core i7-965, 45 nm, 3.2 GHz) single-core wrong-path config, derived from golden_cove.json. No uop cache: the DIB stands in for the 28-uop Loop Stream Detector. Nehalem renames into the ROB, so register_file_size is ROB entries plus architectural registers. Not modeled: triple-channel DDR3 (1 channel here, matching golden_cove.json), the separate uncore clock, L3 inclusivity, the L2 streamer prefetcher, macro-/micro-fusion, and the two-level BTB (one level here). hashed_perceptron is likely stronger than Nehalem's real predictor.",
+  "environment": "ENVIRONMENT",
+  "block_size": 64,
+  "page_size": 4096,
+  "num_cores": 1,
+  "heartbeat_frequency": 10000000,
+  "children": [
+    {
+      "name": "retire_cpi_stack",
+      "module": "listener",
+      "model": "RETIRE_CPI_STACK"
+    },
+    {
+      "name": "dispatch_cpi_stack",
+      "module": "listener",
+      "model": "DISPATCH_CPI_STACK"
+    },
+    {
+      "name": "issue_cpi_stack",
+      "module": "listener",
+      "model": "ISSUE_CPI_STACK"
+    },
+    {
+      "_comment": "=== Channels (instantiated first, referenced by other modules) ===",
+      "name": "cpu0_PTW_cpu0_L1D_channel",
+      "module": "channel",
+      "model": "DEFAULT_CHANNEL",
+      "rq_size": 32,
+      "wq_size": 32,
+      "pq_size": 32,
+      "offset_bits": {
+        "bits": "6"
+      },
+      "match_offset_bits": true
+    },
+    {
+      "name": "LLC_DRAM_channel",
+      "module": "channel",
+      "model": "DEFAULT_CHANNEL",
+      "rq_size": 32,
+      "wq_size": 32,
+      "pq_size": 32,
+      "offset_bits": {
+        "bits": "6"
+      },
+      "match_offset_bits": false
+    },
+    {
+      "name": "cpu0_DTLB_cpu0_STLB_channel",
+      "module": "channel",
+      "model": "DEFAULT_CHANNEL",
+      "rq_size": 16,
+      "wq_size": 16,
+      "pq_size": 16,
+      "offset_bits": {
+        "bits": "12"
+      },
+      "match_offset_bits": false
+    },
+    {
+      "name": "cpu0_ITLB_cpu0_STLB_channel",
+      "module": "channel",
+      "model": "DEFAULT_CHANNEL",
+      "rq_size": 16,
+      "wq_size": 16,
+      "pq_size": 16,
+      "offset_bits": {
+        "bits": "12"
+      },
+      "match_offset_bits": false
+    },
+    {
+      "name": "cpu0_L1D_cpu0_L2C_channel",
+      "module": "channel",
+      "model": "DEFAULT_CHANNEL",
+      "rq_size": 16,
+      "wq_size": 16,
+      "pq_size": 32,
+      "offset_bits": {
+        "bits": "6"
+      },
+      "match_offset_bits": false
+    },
+    {
+      "name": "cpu0_L1D_cpu0_DTLB_channel",
+      "module": "channel",
+      "model": "DEFAULT_CHANNEL",
+      "rq_size": 16,
+      "wq_size": 16,
+      "pq_size": 16,
+      "offset_bits": {
+        "bits": "12"
+      },
+      "match_offset_bits": true
+    },
+    {
+      "name": "cpu0_L1I_cpu0_L2C_channel",
+      "module": "channel",
+      "model": "DEFAULT_CHANNEL",
+      "rq_size": 16,
+      "wq_size": 16,
+      "pq_size": 32,
+      "offset_bits": {
+        "bits": "6"
+      },
+      "match_offset_bits": false
+    },
+    {
+      "name": "cpu0_L1I_cpu0_ITLB_channel",
+      "module": "channel",
+      "model": "DEFAULT_CHANNEL",
+      "rq_size": 16,
+      "wq_size": 16,
+      "pq_size": 16,
+      "offset_bits": {
+        "bits": "12"
+      },
+      "match_offset_bits": true
+    },
+    {
+      "name": "cpu0_L2C_LLC_channel",
+      "module": "channel",
+      "model": "DEFAULT_CHANNEL",
+      "rq_size": 32,
+      "wq_size": 32,
+      "pq_size": 32,
+      "offset_bits": {
+        "bits": "6"
+      },
+      "match_offset_bits": false
+    },
+    {
+      "name": "cpu0_L2C_cpu0_STLB_channel",
+      "module": "channel",
+      "model": "DEFAULT_CHANNEL",
+      "rq_size": 16,
+      "wq_size": 16,
+      "pq_size": 16,
+      "offset_bits": {
+        "bits": "12"
+      },
+      "match_offset_bits": false
+    },
+    {
+      "name": "cpu0_STLB_cpu0_PTW_channel",
+      "module": "channel",
+      "model": "DEFAULT_CHANNEL",
+      "rq_size": 32,
+      "wq_size": 0,
+      "pq_size": 0,
+      "offset_bits": {
+        "bits": "12"
+      },
+      "match_offset_bits": false
+    },
+    {
+      "name": "cpu0_cpu0_L1I_channel",
+      "module": "channel",
+      "model": "DEFAULT_CHANNEL",
+      "rq_size": 16,
+      "wq_size": 16,
+      "pq_size": 16,
+      "offset_bits": {
+        "bits": "6"
+      },
+      "match_offset_bits": true
+    },
+    {
+      "name": "cpu0_cpu0_L1D_channel",
+      "module": "channel",
+      "model": "DEFAULT_CHANNEL",
+      "rq_size": 16,
+      "wq_size": 16,
+      "pq_size": 8,
+      "offset_bits": {
+        "bits": "6"
+      },
+      "match_offset_bits": true
+    },
+    {
+      "_comment": "=== DRAM: DDR3-1066 CL7-7-7-20, 1 channel to match golden_cove.json (real Bloomfield has 3) ===",
+      "name": "DRAM",
+      "module": "memory_controller",
+      "model": "DEFAULT_MEMORY_CONTROLLER",
+      "dbus_period": {
+        "time": "938p"
+      },
+      "mc_period": {
+        "time": "1875p"
+      },
+      "n_rp": 7,
+      "n_rcd": 7,
+      "n_cas": 7,
+      "n_ras": 20,
+      "refresh_period": {
+        "time": "64000u"
+      },
+      "rq_size": 32,
+      "wq_size": 32,
+      "channels": 1,
+      "channel_width": {
+        "bytes": "8"
+      },
+      "rows": 65536,
+      "columns": 1024,
+      "ranks": 2,
+      "bankgroups": 1,
+      "banks": 8,
+      "refreshes_per_period": 8192,
+      "ul_channels": [
+        "@LLC_DRAM_channel"
+      ],
+      "_comment_size": "8 GiB total"
+    },
+    {
+      "_comment": "=== Virtual Memory: 4-level x86-64 paging (48-bit VA) ===",
+      "name": "VMEM",
+      "module": "vmem",
+      "model": "DEFAULT_VMEM",
+      "page_table_page_size": {
+        "bytes": "4Ki"
+      },
+      "page_table_levels": 4,
+      "minor_fault_penalty": {
+        "time": "312000p"
+      },
+      "randomization_seed": {
+        "optional_uint64": 1
+      },
+      "dram": "@DRAM"
+    },
+    {
+      "_comment": "=== Page Table Walker: one walk at a time; small PML4/PDPT/PDE paging-structure caches (sizes approximate) ===",
+      "name": "cpu0_PTW",
+      "module": "page_table_walker",
+      "model": "DEFAULT_PTW",
+      "clock_period": {
+        "time": "312p"
+      },
+      "cpu": 0,
+      "mshr_size": 1,
+      "latency": 0,
+      "max_tag_check": {
+        "bandwidth": 1
+      },
+      "max_fill": {
+        "bandwidth": 1
+      },
+      "upper_levels": [
+        "@cpu0_STLB_cpu0_PTW_channel"
+      ],
+      "lower_level": "@cpu0_PTW_cpu0_L1D_channel",
+      "vmem": "@VMEM",
+      "pscl_dims": [
+        [
+          4,
+          1,
+          2
+        ],
+        [
+          3,
+          1,
+          4
+        ],
+        [
+          2,
+          4,
+          8
+        ]
+      ]
+    },
+    {
+      "_comment": "=== LLC: 8 MB shared, 16-way, ~39-cycle load-to-use (inclusive on real hardware; not modeled) ===",
+      "name": "LLC",
+      "module": "cache",
+      "model": "DEFAULT_CACHE",
+      "clock_period": {
+        "time": "312p"
+      },
+      "num_sets": 8192,
+      "num_ways": 16,
+      "pq_size": 32,
+      "mshr_size": 32,
+      "hit_latency": 28,
+      "fill_latency": 1,
+      "offset_bits": {
+        "bits": "6"
+      },
+      "max_tag_bandwidth": {
+        "bandwidth": 2
+      },
+      "max_fill_bandwidth": {
+        "bandwidth": 2
+      },
+      "prefetch_as_load": false,
+      "match_offset_bits": false,
+      "virtual_prefetch": false,
+      "always_hit": false,
+      "auto_translate": false,
+      "pref_activate_mask": {
+        "access_types": [
+          "LOAD",
+          "PREFETCH"
+        ]
+      },
+      "upper_levels": [
+        "@cpu0_L2C_LLC_channel"
+      ],
+      "lower_level": "@LLC_DRAM_channel",
+      "lower_translate": {
+        "null": "channel"
+      },
+      "children": [
+        {
+          "name": "LLC_prefetcher",
+          "module": "prefetcher",
+          "model": "no"
+        },
+        {
+          "name": "LLC_replacement",
+          "module": "replacement",
+          "model": "lru"
+        }
+      ]
+    },
+    {
+      "_comment": "=== cpu0 DTLB: 64 entries, 4-way; bandwidth/MSHRs 2 = lq_width + sq_width ===",
+      "name": "cpu0_DTLB",
+      "module": "cache",
+      "model": "DEFAULT_CACHE",
+      "clock_period": {
+        "time": "312p"
+      },
+      "num_sets": 16,
+      "num_ways": 4,
+      "pq_size": 0,
+      "mshr_size": 2,
+      "hit_latency": 1,
+      "fill_latency": 1,
+      "offset_bits": {
+        "bits": "12"
+      },
+      "max_tag_bandwidth": {
+        "bandwidth": 2
+      },
+      "max_fill_bandwidth": {
+        "bandwidth": 2
+      },
+      "prefetch_as_load": false,
+      "match_offset_bits": true,
+      "virtual_prefetch": false,
+      "always_hit": false,
+      "auto_translate": false,
+      "pref_activate_mask": {
+        "access_types": [
+          "LOAD",
+          "PREFETCH"
+        ]
+      },
+      "upper_levels": [
+        "@cpu0_L1D_cpu0_DTLB_channel"
+      ],
+      "lower_level": "@cpu0_DTLB_cpu0_STLB_channel",
+      "lower_translate": {
+        "null": "channel"
+      },
+      "children": [
+        {
+          "name": "cpu0_DTLB_prefetcher",
+          "module": "prefetcher",
+          "model": "no"
+        },
+        {
+          "name": "cpu0_DTLB_replacement",
+          "module": "replacement",
+          "model": "lru"
+        }
+      ]
+    },
+    {
+      "_comment": "=== cpu0 ITLB: 128 entries, 4-way ===",
+      "name": "cpu0_ITLB",
+      "module": "cache",
+      "model": "DEFAULT_CACHE",
+      "clock_period": {
+        "time": "312p"
+      },
+      "num_sets": 32,
+      "num_ways": 4,
+      "pq_size": 0,
+      "mshr_size": 4,
+      "hit_latency": 1,
+      "fill_latency": 1,
+      "offset_bits": {
+        "bits": "12"
+      },
+      "max_tag_bandwidth": {
+        "bandwidth": 1
+      },
+      "max_fill_bandwidth": {
+        "bandwidth": 1
+      },
+      "prefetch_as_load": false,
+      "match_offset_bits": true,
+      "virtual_prefetch": true,
+      "always_hit": false,
+      "auto_translate": false,
+      "pref_activate_mask": {
+        "access_types": [
+          "LOAD",
+          "PREFETCH"
+        ]
+      },
+      "upper_levels": [
+        "@cpu0_L1I_cpu0_ITLB_channel"
+      ],
+      "lower_level": "@cpu0_ITLB_cpu0_STLB_channel",
+      "lower_translate": {
+        "null": "channel"
+      },
+      "children": [
+        {
+          "name": "cpu0_ITLB_prefetcher",
+          "module": "prefetcher",
+          "model": "no"
+        },
+        {
+          "name": "cpu0_ITLB_replacement",
+          "module": "replacement",
+          "model": "lru"
+        }
+      ]
+    },
+    {
+      "_comment": "=== cpu0 L1D: 32 KB, 8-way, 4-cycle load-to-use, 10 line fill buffers. ip_stride stands in for the DCU IP prefetcher ===",
+      "name": "cpu0_L1D",
+      "module": "cache",
+      "model": "DEFAULT_CACHE",
+      "clock_period": {
+        "time": "312p"
+      },
+      "num_sets": 64,
+      "num_ways": 8,
+      "pq_size": 8,
+      "mshr_size": 10,
+      "hit_latency": 4,
+      "fill_latency": 1,
+      "offset_bits": {
+        "bits": "6"
+      },
+      "max_tag_bandwidth": {
+        "bandwidth": 2
+      },
+      "max_fill_bandwidth": {
+        "bandwidth": 2
+      },
+      "prefetch_as_load": false,
+      "match_offset_bits": true,
+      "virtual_prefetch": false,
+      "always_hit": false,
+      "auto_translate": false,
+      "vmem": "@VMEM",
+      "pref_activate_mask": {
+        "access_types": [
+          "LOAD",
+          "PREFETCH"
+        ]
+      },
+      "upper_levels": [
+        "@cpu0_PTW_cpu0_L1D_channel",
+        "@cpu0_cpu0_L1D_channel"
+      ],
+      "lower_level": "@cpu0_L1D_cpu0_L2C_channel",
+      "lower_translate": "@cpu0_L1D_cpu0_DTLB_channel",
+      "children": [
+        {
+          "name": "cpu0_L1D_prefetcher",
+          "module": "prefetcher",
+          "model": "ip_stride"
+        },
+        {
+          "name": "cpu0_L1D_replacement",
+          "module": "replacement",
+          "model": "lru"
+        }
+      ]
+    },
+    {
+      "_comment": "=== cpu0 L1I: 32 KB, 4-way, 16 B fetch/cycle ===",
+      "name": "cpu0_L1I",
+      "module": "cache",
+      "model": "DEFAULT_CACHE",
+      "clock_period": {
+        "time": "312p"
+      },
+      "num_sets": 128,
+      "num_ways": 4,
+      "pq_size": 16,
+      "mshr_size": 8,
+      "hit_latency": 1,
+      "fill_latency": 2,
+      "offset_bits": {
+        "bits": "6"
+      },
+      "max_tag_bandwidth": {
+        "bandwidth": 2
+      },
+      "max_fill_bandwidth": {
+        "bandwidth": 2
+      },
+      "prefetch_as_load": false,
+      "match_offset_bits": true,
+      "virtual_prefetch": true,
+      "always_hit": false,
+      "auto_translate": false,
+      "vmem": "@VMEM",
+      "pref_activate_mask": {
+        "access_types": [
+          "LOAD",
+          "PREFETCH"
+        ]
+      },
+      "upper_levels": [
+        "@cpu0_cpu0_L1I_channel"
+      ],
+      "lower_level": "@cpu0_L1I_cpu0_L2C_channel",
+      "lower_translate": "@cpu0_L1I_cpu0_ITLB_channel",
+      "children": [
+        {
+          "name": "cpu0_L1I_prefetcher",
+          "module": "prefetcher",
+          "model": "no"
+        },
+        {
+          "name": "cpu0_L1I_replacement",
+          "module": "replacement",
+          "model": "lru"
+        }
+      ]
+    },
+    {
+      "_comment": "=== cpu0 L2C: 256 KB private, 8-way, ~10-cycle load-to-use. next_line stands in for the spatial (adjacent-line) prefetcher ===",
+      "name": "cpu0_L2C",
+      "module": "cache",
+      "model": "DEFAULT_CACHE",
+      "clock_period": {
+        "time": "312p"
+      },
+      "num_sets": 512,
+      "num_ways": 8,
+      "pq_size": 32,
+      "mshr_size": 16,
+      "hit_latency": 5,
+      "fill_latency": 1,
+      "offset_bits": {
+        "bits": "6"
+      },
+      "max_tag_bandwidth": {
+        "bandwidth": 2
+      },
+      "max_fill_bandwidth": {
+        "bandwidth": 1
+      },
+      "prefetch_as_load": false,
+      "match_offset_bits": false,
+      "virtual_prefetch": false,
+      "always_hit": false,
+      "auto_translate": false,
+      "pref_activate_mask": {
+        "access_types": [
+          "LOAD",
+          "PREFETCH"
+        ]
+      },
+      "upper_levels": [
+        "@cpu0_L1D_cpu0_L2C_channel",
+        "@cpu0_L1I_cpu0_L2C_channel"
+      ],
+      "lower_level": "@cpu0_L2C_LLC_channel",
+      "lower_translate": "@cpu0_L2C_cpu0_STLB_channel",
+      "children": [
+        {
+          "name": "cpu0_L2C_prefetcher",
+          "module": "prefetcher",
+          "model": "next_line"
+        },
+        {
+          "name": "cpu0_L2C_replacement",
+          "module": "replacement",
+          "model": "lru"
+        }
+      ]
+    },
+    {
+      "_comment": "=== cpu0 STLB: 512 entries, 4-way, unified (new in Nehalem), ~7-cycle hit ===",
+      "name": "cpu0_STLB",
+      "module": "cache",
+      "model": "DEFAULT_CACHE",
+      "clock_period": {
+        "time": "312p"
+      },
+      "num_sets": 128,
+      "num_ways": 4,
+      "pq_size": 0,
+      "mshr_size": 4,
+      "hit_latency": 7,
+      "fill_latency": 1,
+      "offset_bits": {
+        "bits": "12"
+      },
+      "max_tag_bandwidth": {
+        "bandwidth": 2
+      },
+      "max_fill_bandwidth": {
+        "bandwidth": 2
+      },
+      "prefetch_as_load": false,
+      "match_offset_bits": false,
+      "virtual_prefetch": false,
+      "always_hit": false,
+      "auto_translate": false,
+      "pref_activate_mask": {
+        "access_types": [
+          "LOAD",
+          "PREFETCH"
+        ]
+      },
+      "upper_levels": [
+        "@cpu0_DTLB_cpu0_STLB_channel",
+        "@cpu0_ITLB_cpu0_STLB_channel",
+        "@cpu0_L2C_cpu0_STLB_channel"
+      ],
+      "lower_level": "@cpu0_STLB_cpu0_PTW_channel",
+      "lower_translate": {
+        "null": "channel"
+      },
+      "children": [
+        {
+          "name": "cpu0_STLB_prefetcher",
+          "module": "prefetcher",
+          "model": "no"
+        },
+        {
+          "name": "cpu0_STLB_replacement",
+          "module": "replacement",
+          "model": "lru"
+        }
+      ]
+    },
+    {
+      "_comment": "=== cpu0 Core: Nehalem, 4-wide, ~17-cycle branch mispredict ===",
+      "name": "cpu0",
+      "module": "core",
+      "model": "DEFAULT_CORE",
+      "clock_period": {
+        "time": "312p"
+      },
+      "cpu": 0,
+      "fdip_instr_width": {
+        "bandwidth": 100
+      },
+      "fdip_branch_width": {
+        "bandwidth": 1
+      },
+      "fdip_taken_branch_width": {
+        "bandwidth": 1
+      },
+      "perfect_branch_prediction": false,
+      "always_dib_hit": false,
+      "ignore_register_dependencies": false,
+      "instant_dcache": false,
+      "instant_icache": false,
+      "dib_set": 1,
+      "dib_way": 4,
+      "dib_window": 32,
+      "dib_hit_buffer_size": 28,
+      "dib_inorder_width": {
+        "bandwidth": 4
+      },
+      "dib_hit_latency": 1,
+      "ifetch_buffer_size": 18,
+      "decode_buffer_size": 16,
+      "dispatch_buffer_size": 28,
+      "register_file_size": 192,
+      "rob_size": 128,
+      "lq_size": 48,
+      "sq_size": 32,
+      "fetch_width": {
+        "bandwidth": 4
+      },
+      "decode_width": {
+        "bandwidth": 4
+      },
+      "dispatch_width": {
+        "bandwidth": 4
+      },
+      "execute_width": {
+        "bandwidth": 6
+      },
+      "lq_width": {
+        "bandwidth": 1
+      },
+      "sq_width": {
+        "bandwidth": 1
+      },
+      "retire_width": {
+        "bandwidth": 4
+      },
+      "schedule_width": {
+        "bandwidth": 36
+      },
+      "mispredict_penalty": 3,
+      "decode_latency": 4,
+      "dispatch_latency": 2,
+      "schedule_latency": 5,
+      "execute_latency": 1,
+      "l1i": "@cpu0_L1I",
+      "l1i_bandwidth": {
+        "bandwidth": 1
+      },
+      "l1d_bandwidth": {
+        "bandwidth": 1
+      },
+      "fetch_queues": "@cpu0_cpu0_L1I_channel",
+      "data_queues": "@cpu0_cpu0_L1D_channel",
+      "children": [
+        {
+          "name": "cpu0_bp",
+          "module": "branch_predictor",
+          "model": "hashed_perceptron"
+        },
+        {
+          "name": "cpu0_btb",
+          "module": "btb",
+          "model": "basic_btb",
+          "btb_sets": 512,
+          "btb_ways": 4,
+          "ras_size": 16,
+          "_comment": "16-entry return stack buffer. Intel never published Nehalem's two-level BTB or indirect-predictor sizes; the BTB uses Core 2's ~2K-entry 4-way estimate as a single level and the indirect table keeps the defaults."
+        },
+        {
+          "_comment": "Trace-driven workload source. $trace0 is the first positional CLI trace.",
+          "name": "cpu0_trace_source",
+          "module": "workload_source",
+          "model": "WRONG_PATH_TRACE_WORKLOAD_SOURCE",
+          "trace_file": "$trace0",
+          "cpu": 0,
+          "wrong_path_enabled": true,
+          "max_wp_instrs": 0,
+          "repeat": false
+        }
+      ],
+      "_comment_dib": "Loop Stream Detector: 28 uops, about 4 x 32 B of loop code; streams 4 uops/cycle bypassing fetch and decode",
+      "_comment_ifetch_buffer_size": "18-entry instruction queue after pre-decode",
+      "_comment_dispatch_buffer_size": "28-entry decoded uop queue (IDQ)",
+      "_comment_register_file_size": "ROB-based renaming: 128 ROB entries + room for architectural registers",
+      "_comment_fetch_width": "16 B/cycle, roughly 4 x86 instructions",
+      "_comment_decode_width": "4 decoders (4-1-1-1)",
+      "_comment_execute_width": "6 ports: 3 ALU (0,1,5), load (2), store address (3), store data (4)",
+      "_comment_schedule_width": "36-entry unified reservation station",
+      "_comment_latencies": "same split as golden_cove; together with fetch these give the ~17-cycle mispredict penalty Agner Fog measures for Nehalem"
+    },
+    {
+      "_comment": "=== Phase controller ===",
+      "_comment2": "Drives the warmup + simulation phases. Uses CLI -w / -i via $vars.",
+      "name": "phase_controller",
+      "module": "phase_controller",
+      "model": "INSTRUCTION_PHASE_CONTROLLER",
+      "deadlock_cycles": 1000000,
+      "warmup_length": "$warmup_instructions",
+      "simulation_length": "$simulation_instructions"
+    }
+  ]
+}
